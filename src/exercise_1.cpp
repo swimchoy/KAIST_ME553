@@ -26,9 +26,6 @@ int main(int argc, char* argv[]) {
   debugSphere->setColor(1,0,0,1);
   debugSphere->setPosition(1,1,0);
 
-  // compute the position of the end-effector
-  raisim::rpyToRotMat_extrinsic()
-
   // visualization
   server.launchServer();
   for (int i=0; i<2000000; i++)

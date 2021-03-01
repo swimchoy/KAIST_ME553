@@ -38,8 +38,8 @@ int main(int argc, char* argv[]) {
   // launch raisim server
   server.launchServer();
 
-  for (int i=0; i<1000000; i++)
-    std::this_thread::sleep_for(std::chrono::microseconds(10));
+  for (int i=0; i<100000000; i++)
+    std::this_thread::sleep_for(std::chrono::microseconds(1000));
 
   server.killServer();
 }
