@@ -32,8 +32,10 @@ int main(int argc, char* argv[]) {
   Eigen::VectorXd b = kinova->getNonlinearities().e();
   Eigen::VectorXd acc_raisim = Minv * (gf-b);
 
+
   if ((getGaUsingABA(gc, gv, gf) - acc_raisim).norm() < 1e-8)
     std::cout<<"ABA passed"<<std::endl;
   else
     std::cout<<"ABA failed"<<std::endl;
+  std::cout<<acc_raisim<<std::endl;
 }
