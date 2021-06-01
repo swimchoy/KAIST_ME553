@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.10)
 project(KAIST_ME553_Exercise1 LANGUAGES CXX)
 
+list(APPEND CMAKE_PREFIX_PATH "/home/suyoung/Programs/raisimInstall/")
+
 find_package(raisim CONFIG REQUIRED)
 find_package(Eigen3 REQUIRED)
 
@@ -24,5 +26,3 @@ create_executable(exercise_3)
 create_executable(exercise_4)
 create_executable(exercise_6)
 create_executable(exercise_7)
-create_executable(exercise_8)
-create_executable(exercise_9)

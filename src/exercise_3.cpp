@@ -1,5 +1,5 @@
 #include "raisim/RaisimServer.hpp"
-#include "exercise_3_STUDENTID.hpp"
+#include "exercise_3_20204577.hpp"
 
 
 int main(int argc, char* argv[]) {
@@ -25,6 +25,15 @@ int main(int argc, char* argv[]) {
   raisim::Vec<4> quatDes{0, 1, 0, 0}, quatCur, quatDiff;
   raisim::Mat<3,3> rotCur;
 
+  /// costom
+  posDes = {0.4, 0.2, 0.3};
+  quatDes = {0, 1, 0, 0};
+
+  auto debugSphere = server.addVisualSphere("debug_sphere", 0.15);
+  debugSphere->setColor(1,0,0,1);
+  debugSphere->setPosition(posDes.e());
+  ///
+
   // visualization
   server.launchServer();
 
@@ -42,6 +51,11 @@ int main(int argc, char* argv[]) {
       std::cout<<"passed "<<std::endl;
     }
     ////////////////////////////////////////////////////////////////////////////////
+
+    if(i % 100 == 0) {
+      std::cout<<"posDiff.norm() = "<<posDiff.e().norm()<<std::endl;
+      std::cout<<"quatDiff.norm()= "<<quatDiff.e().norm()<<std::endl;
+    }
 
     kinova->setGeneralizedVelocity(getVelocityCommand(gc, posDes.e(), quatDes.e()));
     world.integrate2();

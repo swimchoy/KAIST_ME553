@@ -1,5 +1,5 @@
 #include "raisim/RaisimServer.hpp"
-#include "exercise_6_STUDENTID.hpp"
+#include "exercise_6_20204577.hpp"
 
 
 int main(int argc, char* argv[]) {

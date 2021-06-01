@@ -2,7 +2,7 @@
 // Inc. prior to usage.
 
 #include "raisim/RaisimServer.hpp"
-#include "exercise_2_STUDENTID.hpp"
+#include "exercise_2_20204577.hpp"
 
 
 int main(int argc, char* argv[]) {
@@ -23,8 +23,11 @@ int main(int argc, char* argv[]) {
   Eigen::VectorXd gc(anymal->getGeneralizedCoordinateDim());
   Eigen::VectorXd gv(anymal->getDOF());
 
-  gc << 0, 0, 10.54, 1.0, 0.0, 0.0, 0.0, 0.03, 0.4, -0.8, -0.03, 0.4, -0.8, 0.03, -0.4, 0.8, -0.03, -0.4, 0.8;
-  gv << 0.1, 0.2, 0.3, 0.1, 0.2, 0.3, 0.1,0.1,0.1, 0.2,0.2,0.2, 0.3,0.3,0.3, 0.4,0.4,0.4;
+//  gc << 0, 0, 10.54, 1.0, 0.0, 0.0, 0.0, 0.03, 0.4, -0.8, -0.03, 0.4, -0.8, 0.03, -0.4, 0.8, -0.03, -0.4, 0.8;
+//  gv << 0.1, 0.2, 0.3, 0.1, 0.2, 0.3, 0.1,0.1,0.1, 0.2,0.2,0.2, 0.3,0.3,0.3, 0.4,0.4,0.4;
+
+  gc << 2, 1, 10.54, 1.0, 0.0, 0.0, 0.0, 0.33, 0.7, -0.8, -0.03, 0.2, -1.0, 0.02, -0.4, 0.8, -0.12, -0.4, 0.8;
+  gv << 0.1, 0.4, 0.5, 0.2, 0.3, 0.6, 0.2,0.1,0.1, 0.2,0.2,0.2, 0.3,0.3,0.3, 0.4,0.4,0.4;
   anymal->setState(gc, gv);
 
   // visualization
@@ -41,6 +44,7 @@ int main(int argc, char* argv[]) {
     if((footVel.e() - getFootLinearVelocity(gc, gv)).norm() < 1e-10) {
       std::cout<<"the linear velocity is correct "<<std::endl;
     } else {
+      std::cout<<(footVel.e() - getFootLinearVelocity(gc, gv)).norm()<<std::endl;
       std::cout<<"the linear velocity is not correct "<<std::endl;
     }
 

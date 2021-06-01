@@ -1,5 +1,5 @@
 #include "raisim/RaisimServer.hpp"
-#include "exercise_4_STUDENTID.hpp"
+#include "exercise_4_20204577.hpp"
 
 
 int main(int argc, char* argv[]) {
@@ -11,6 +11,9 @@ int main(int argc, char* argv[]) {
   world.addGround();
 
   // kinova
+
+  /// gravity /// raisim::Vec<3> g{0,0,0}; world.setGravity(g);
+
   auto kinova = world.addArticulatedSystem(binaryPath.getDirectory() + "/rsc/kinova/urdf/kinova_no_fingers.urdf");
   kinova->setName("kinova");
   server.focusOn(kinova);
