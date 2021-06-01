@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(KAIST_ME553_Exercise1 LANGUAGES CXX)
+project(KAIST_ME553 LANGUAGES CXX)
 
 list(APPEND CMAKE_PREFIX_PATH "/home/suyoung/Programs/raisimInstall/")
 
