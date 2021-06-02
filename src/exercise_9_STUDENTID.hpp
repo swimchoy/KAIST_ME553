@@ -365,6 +365,7 @@ class KINOVA : public Robot {
     Eigen::MatrixXd M, X_com(6, 6);
     Eigen::VectorXd b;
 
+    //TODO: MAKE Composite body at the end effector
     for (int i = 0; i <= 7; ++i) {
       M.setZero(6,6);
       b.setZero(6);
