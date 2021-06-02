@@ -11,7 +11,10 @@ int main(int argc, char* argv[]) {
   // create raisim world
   raisim::World world; // physics world
   raisim::RaisimServer server(&world); // visualization server
-  world.setGravity({0,0,-9.81}); //// use this gravity in your ABA!!!!
+
+  //TODO: SET THIS LATER!!!!!!
+//  world.setGravity({0,0,-9.81}); //// use this gravity in your ABA!!!!
+  world.setGravity({0,0,0}); //// use this gravity in your ABA!!!!
 
   // kinova
   auto kinova = world.addArticulatedSystem(binaryPath.getDirectory() + "/rsc/kinova/urdf/kinova_no_fingers.urdf");

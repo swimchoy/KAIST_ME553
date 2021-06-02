@@ -374,6 +374,7 @@ class KINOVA : public Robot {
       M.bottomLeftCorner(3,3) = massSet(i) * skew(-relativeComPos.row(i));
       M.bottomRightCorner(3,3) = w_I_[i] - massSet(i) * skew(-relativeComPos.row(i)) * skew(-relativeComPos.row(i));
 
+      //TODO: Check should I use frameJ or comJ
       b.head(3) = massSet(i) * skew(comJ_[i].bottomRows(3) * gv) * skew(comJ_[i].bottomRows(3) * gv) * (-relativeComPos.row(i).transpose());
       b.tail(3) = skew(comJ_[i].bottomRows(3) * gv) * (w_I_[i] - massSet(i) * skew(-relativeComPos.row(i)) * skew(-relativeComPos.row(i))) * \
                   (comJ_[i].bottomRows(3) * gv);
