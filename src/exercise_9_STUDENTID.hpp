@@ -379,23 +379,23 @@ class KINOVA : public Robot {
         Eigen::Matrix3d c_I = w_I_[i] + w_I_[i+1] - massSet(i) * skew(r1) * skew(r1) - massSet(i+1) * skew(r2) * skew(r2);
 
         M.topLeftCorner(3,3) = c_m * Eigen::Matrix3d::Identity();
-        M.topRightCorner(3,3) = -c_m * skew(-r_com);
-        M.bottomLeftCorner(3,3) = c_m * skew(-r_com);
-        M.bottomRightCorner(3,3) = c_I - c_m * skew(-r_com) * skew(-r_com);
+        M.topRightCorner(3,3) = -c_m * skew(r_com);
+        M.bottomLeftCorner(3,3) = c_m * skew(r_com);
+        M.bottomRightCorner(3,3) = c_I - c_m * skew(r_com) * skew(r_com);
 
-        b.head(3) = c_m * skew(comJ_[i].bottomRows(3) * gv) * skew(comJ_[i].bottomRows(3) * gv) * (-r_com);
-        b.tail(3) = skew(comJ_[i].bottomRows(3) * gv) * (c_I - c_m * skew(-r_com) * skew(-r_com)) * \
+        b.head(3) = c_m * skew(comJ_[i].bottomRows(3) * gv) * skew(comJ_[i].bottomRows(3) * gv) * (r_com);
+        b.tail(3) = skew(comJ_[i].bottomRows(3) * gv) * (c_I - c_m * skew(r_com) * skew(r_com)) * \
                   (comJ_[i].bottomRows(3) * gv);
 
       } else {
         M.topLeftCorner(3,3) = massSet(i) * Eigen::Matrix3d::Identity();
-        M.topRightCorner(3,3) = -massSet(i) * skew(-relativeComPos.row(i));
-        M.bottomLeftCorner(3,3) = massSet(i) * skew(-relativeComPos.row(i));
-        M.bottomRightCorner(3,3) = w_I_[i] - massSet(i) * skew(-relativeComPos.row(i)) * skew(-relativeComPos.row(i));
+        M.topRightCorner(3,3) = -massSet(i) * skew(relativeComPos.row(i));
+        M.bottomLeftCorner(3,3) = massSet(i) * skew(relativeComPos.row(i));
+        M.bottomRightCorner(3,3) = w_I_[i] - massSet(i) * skew(relativeComPos.row(i)) * skew(relativeComPos.row(i));
 
         //TODO: Check should I use frameJ or comJ
-        b.head(3) = massSet(i) * skew(comJ_[i].bottomRows(3) * gv) * skew(comJ_[i].bottomRows(3) * gv) * (-relativeComPos.row(i).transpose());
-        b.tail(3) = skew(comJ_[i].bottomRows(3) * gv) * (w_I_[i] - massSet(i) * skew(-relativeComPos.row(i)) * skew(-relativeComPos.row(i))) * \
+        b.head(3) = massSet(i) * skew(comJ_[i].bottomRows(3) * gv) * skew(comJ_[i].bottomRows(3) * gv) * (relativeComPos.row(i).transpose());
+        b.tail(3) = skew(comJ_[i].bottomRows(3) * gv) * (w_I_[i] - massSet(i) * skew(relativeComPos.row(i)) * skew(relativeComPos.row(i))) * \
                   (comJ_[i].bottomRows(3) * gv);
 
         raisim::Vec<3> w;

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 project(KAIST_ME553 LANGUAGES CXX)
 
-list(APPEND CMAKE_PREFIX_PATH "/home/suyoung/Programs/raisimInstall/")
+list(APPEND CMAKE_PREFIX_PATH "/Users/suyoung/Workspace/raisimLib/raisim_build")
 
 find_package(raisim CONFIG REQUIRED)
 find_package(Eigen3 REQUIRED)
