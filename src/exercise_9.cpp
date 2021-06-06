@@ -11,10 +11,7 @@ int main(int argc, char* argv[]) {
   // create raisim world
   raisim::World world; // physics world
   raisim::RaisimServer server(&world); // visualization server
-
-  //TODO: SET THIS LATER!!!!!!
-//  world.setGravity({0,0,-9.81}); //// use this gravity in your ABA!!!!
-  world.setGravity({0,0,0}); //// use this gravity in your ABA!!!!
+  world.setGravity({0,0,-9.81}); //// use this gravity in your ABA!!!!
 
   // kinova
   auto kinova = world.addArticulatedSystem(binaryPath.getDirectory() + "/rsc/kinova/urdf/kinova_no_fingers.urdf");
@@ -36,9 +33,8 @@ int main(int argc, char* argv[]) {
   Eigen::VectorXd acc_raisim = Minv * (gf-b);
 
 
-  if ((getGaUsingABA(gc, gv, gf, kinova) - acc_raisim).norm() < 1e-8)
+  if ((getGaUsingABA(gc, gv, gf) - acc_raisim).norm() < 1e-8)
     std::cout<<"ABA passed"<<std::endl;
   else
     std::cout<<"ABA failed"<<std::endl;
-  std::cout<<acc_raisim<<std::endl;
 }

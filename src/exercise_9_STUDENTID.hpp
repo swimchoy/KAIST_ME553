@@ -359,14 +359,13 @@ class KINOVA : public Robot {
     return dx;
   }
 
-  void updateSingleBodyDynamics_toJoint (const raisim::ArticulatedSystem *robot) {
+  void updateSingleBodyDynamics_toJoint () {
     M_j.clear();
     b_j.clear();
 
     Eigen::MatrixXd M, X_com(6, 6);
     Eigen::VectorXd b;
 
-    //TODO: MAKE Composite body at the end effector
     for (int i = 0; i <= 6; ++i) {
       M.setZero(6,6);
       b.setZero(6);
@@ -393,24 +392,10 @@ class KINOVA : public Robot {
         M.bottomLeftCorner(3,3) = massSet(i) * skew(relativeComPos.row(i));
         M.bottomRightCorner(3,3) = w_I_[i] - massSet(i) * skew(relativeComPos.row(i)) * skew(relativeComPos.row(i));
 
-        //TODO: Check should I use frameJ or comJ
         b.head(3) = massSet(i) * skew(comJ_[i].bottomRows(3) * gv) * skew(comJ_[i].bottomRows(3) * gv) * (relativeComPos.row(i).transpose());
         b.tail(3) = skew(comJ_[i].bottomRows(3) * gv) * (w_I_[i] - massSet(i) * skew(relativeComPos.row(i)) * skew(relativeComPos.row(i))) * \
                   (comJ_[i].bottomRows(3) * gv);
-
-        raisim::Vec<3> w;
-        if (i!=0)
-          robot->getFrameAngularVelocity("kinova_joint_" + std::to_string(i), w);
-        else
-          robot->getFrameAngularVelocity("kinova_joint_base", w);
-        std::cout<<"GT: frame angVel"<<i<<"\n"<<w.e()<<std::endl;
-        std::cout<<"body AngVel"<<i<<"\n"<<comJ_[i].bottomRows(3) * gv<<std::endl;
       }
-
-      //TODO: gravity
-//      X_com.setIdentity();
-//      X_com.bottomLeftCorner(3,3) = skew(-relativeComPos.row(i));
-//      b += - X_com.leftCols(3) * mg_[i];
 
       M_j.push_back(M);
       b_j.push_back(b);
@@ -421,7 +406,7 @@ class KINOVA : public Robot {
     gf = gf_;
   }
 
-  void updateArticulatedDynamics (const raisim::ArticulatedSystem *robot) {
+  void updateArticulatedDynamics () {
     ArtMassMat.clear();
     ArtBiasedForce.clear();
     ArtMassMat.resize(7);
@@ -432,116 +417,24 @@ class KINOVA : public Robot {
     ArtM.setZero(6,6);
     ArtB.setZero(6);
 
-    Eigen::VectorXd ga_true(6);
-    ga_true = MassMatrix.inverse() * (gf - Nonlinearities);
-    std::cout<<"ga_true\n"<< ga_true<<std::endl;
-
-    std::vector<Eigen::VectorXd> a_raisim;
-    raisim::Vec<3> pos1, pos2;
-    a_raisim.resize(7);
-    Eigen::VectorXd a;
-    a.setZero(6);
-    a_raisim[0] = a;
-
-    for (int i = 0; i < 6; ++i) {
-      if (i != 0) {
-        robot->getFrameVelocity("kinova_joint_" + std::to_string(i), pos1);
-        robot->getFrameAngularVelocity("kinova_joint_" + std::to_string(i), pos2);
-      } else {
-        robot->getFrameVelocity("kinova_joint_base", pos1);
-        robot->getFrameAngularVelocity("kinova_joint_base", pos2);
-      }
-      Eigen::VectorXd vp(6);
-      vp.head(3) = pos1.e();
-      vp.tail(3) = pos2.e();
-
-      a = dS(i+1) * gv(i) + S(i+1) * ga_true(i) + dX(i+1, i).transpose() * vp + X(i+1, i).transpose() * a;
-      a_raisim[i+1] = a;
-      std::cout<<"a_raisim_"<<i+1<<a_raisim[i+1]<<std::endl;
-    }
-
-    for (int i = 0; i < M_j.size(); ++i) {
-
-      std::cout<<"M_j_"<<i<<"\n"<<M_j[i]<<std::endl;
-      std::cout<<"b_j_"<<i<<"\n"<<b_j[i]<<std::endl;
-    }
-
-    for (int i = 0; i < 6; ++i) {
-      if (i != 0) {
-        robot->getFramePosition("kinova_joint_" + std::to_string(i), pos1);
-        robot->getFramePosition("kinova_joint_" + std::to_string(i+1), pos2);
-      } else {
-        robot->getFramePosition("kinova_joint_base", pos1);
-        robot->getFramePosition("kinova_joint_" + std::to_string(i+1), pos2);
-      }
-      std::cout<<"skew(rPB)"<<i<<i+1<<"\n"<<skew(pos2.e()-pos1.e())<<std::endl;
-    }
-
     for (int i = 6; i >= 0 ; --i) {
-      std::cout<<"\nnow processing... : "<<i<<std::endl;
-
-      std::cout<<"check Eq.5"<<std::endl;
-      if (i != 6 && i != 0) {
-        std::cout << ga_true(i) - (1 / (S(i+1).transpose() * ArtM * S(i+1))) * (-S(i+1).transpose() * (ArtM * (dS(i+1) * gv(i) + \
-        dX(i+1, i).transpose() * (frameJ_[i] * gv + S(i) * gv(i - 1)) + X(i+1, i) * a_raisim[i]) + ArtB) + gf(i)) << std::endl;
-      }
 
       if (i == 6) {
         ArtM = M_j[i];
         ArtB = b_j[i];
-//      } else if (i == 6) {
-//        std::cout<<S(i+1).transpose() * ArtM * S(i+1)<<std::endl;
-//        ArtM = M_j[i] + X(i+1, i) * ArtM * X(i+1, i).transpose();
-//        ArtB = b_j[i] + X(i+1, i) * (ArtM * (dX(i+1, i).transpose() * (frameJ_[i] * gv)) + ArtB);
       } else if (i == 0) {
-        ArtM = M_j[i] + X(i+1, i) * ArtM * X(i+1, i).transpose() + X(i+1, i) * ArtM * S(i+1) * \
-               (S(i+1).transpose() * ArtM * S(i+1)).inverse() * (-S(i+1).transpose() * ArtM * X(i+1, i).transpose());
-        ArtB = b_j[i] + X(i+1, i) * (ArtM * (S(i+1) * (S(i+1).transpose() * ArtM * S(i+1)).inverse() * \
-               (-S(i+1).transpose() * (ArtM * (dS(i+1) * gv(i) + dX(i+1, i).transpose() * (frameJ_[i] * gv)) + ArtB) + gf(i)) + \
+        ArtM = M_j[i] + X(i+1, i) * ArtMassMat[i+1] * X(i+1, i).transpose() + X(i+1, i) * ArtMassMat[i+1] * S(i+1) * \
+               (S(i+1).transpose() * ArtMassMat[i+1] * S(i+1)).inverse() * (-S(i+1).transpose() * ArtMassMat[i+1] * X(i+1, i).transpose());
+        ArtB = b_j[i] + X(i+1, i) * (ArtMassMat[i+1] * (S(i+1) * (S(i+1).transpose() * ArtMassMat[i+1] * S(i+1)).inverse() * \
+               (-S(i+1).transpose() * (ArtMassMat[i+1] * (dS(i+1) * gv(i) + dX(i+1, i).transpose() * (frameJ_[i] * gv)) + ArtB) + gf(i)) + \
                dS(i+1) * gv(i) + dX(i+1, i).transpose() * (frameJ_[i] * gv)) + ArtB);
       } else {
-        ArtM = M_j[i] + X(i+1, i) * ArtM * X(i+1, i).transpose() + X(i+1, i) * ArtM * S(i+1) * \
-               (S(i+1).transpose() * ArtM * S(i+1)).inverse() * (-S(i+1).transpose() * ArtM * X(i+1, i).transpose());
-        ArtB = b_j[i] + X(i+1, i) * (ArtM * (S(i+1) * (S(i+1).transpose() * ArtM * S(i+1)).inverse() * \
-               (-S(i+1).transpose() * (ArtM * (dS(i+1) * gv(i) + dX(i+1, i).transpose() * (frameJ_[i] * gv + S(i) * gv(i-1))) + ArtB) + gf(i)) + \
+        ArtM = M_j[i] + X(i+1, i) * ArtMassMat[i+1] * X(i+1, i).transpose() + X(i+1, i) * ArtMassMat[i+1] * S(i+1) * \
+               (S(i+1).transpose() * ArtMassMat[i+1] * S(i+1)).inverse() * (-S(i+1).transpose() * ArtMassMat[i+1] * X(i+1, i).transpose());
+        ArtB = b_j[i] + X(i+1, i) * (ArtMassMat[i+1] * (S(i+1) * (S(i+1).transpose() * ArtMassMat[i+1] * S(i+1)).inverse() * \
+               (-S(i+1).transpose() * (ArtMassMat[i+1] * (dS(i+1) * gv(i) + dX(i+1, i).transpose() * (frameJ_[i] * gv + S(i) * gv(i-1))) + ArtB) + gf(i)) + \
                dS(i+1) * gv(i) + dX(i+1, i).transpose() * (frameJ_[i] * gv + S(i) * gv(i-1))) + ArtB);
-
-//        std::cout<<"SMS\n"<<S(i+1).transpose() * ArtM * S(i+1)<<std::endl;
-//        std::cout<<"inverse\n"<<(S(i+1).transpose() * ArtM * S(i+1)).inverse()<<std::endl;
-
-        // v_p check --> OK
-//        raisim::Vec<3> pos1, pos2;
-//        robot->getFrameVelocity("kinova_joint_" + std::to_string(i), pos1);
-//        robot->getFrameAngularVelocity("kinova_joint_" + std::to_string(i), pos2);
-//        Eigen::VectorXd vp(6);
-//        vp.head(3) = pos1.e();
-//        vp.tail(3) = pos2.e();
-//        std::cout << "v_parent\n" << (frameJ_[i] * gv + S(i) * gv(i - 1) - vp).norm() << std::endl;
-
-
-        // kinematics costraints check --> OK
-//        std::cout<<"kinematics constraints"<<std::endl;
-//        if (((frameJ_[i+1] * gv + S(i+1) * gv(i) - S(i+1) * gv(i)) - X(i+1, i).transpose() * (frameJ_[i] * gv + S(i) * gv(i-1))).norm() < 1e-8)
-//          std::cout<<"passed!!"<<std::endl;
-
       }
-
-      //TODO: problem
-      std::cout<<"check primitive"<<std::endl;
-      if (i != 0 && i != 6)
-        std::cout<<gf(i-1) - S(i).transpose() * (M_j[i] * a_raisim[i] + b_j[i] + X(i+1, i) * \
-                  (ArtMassMat[i+1] * a_raisim[i+1] + ArtBiasedForce[i+1]))<<std::endl;
-
-      std::cout<<"check Articulated Dynamics"<<std::endl;
-      if (i != 0)
-        std::cout<<gf(i-1) - S(i).transpose() * (ArtM * a_raisim[i] + ArtB)<<std::endl;
-
-//      std::cout<<"a_raisim\n"<<a_raisim[i]<<std::endl;
-      std::cout<<"XBP\n"<<X(i+1, i)<<std::endl;
-      std::cout<<"ST\n"<<S(i).transpose()<<std::endl;
-
-      std::cout<<"M\n"<<ArtM<<std::endl;
-      std::cout<<"b\n"<<ArtB<<std::endl;
 
       ArtMassMat[i] = ArtM;
       ArtBiasedForce[i] = ArtB;
@@ -549,35 +442,30 @@ class KINOVA : public Robot {
 
   }
 
-  void ABA (Eigen::VectorXd & ga_, const Eigen::VectorXd& gc, const Eigen::VectorXd& gv, const Eigen::VectorXd& gf, const raisim::ArticulatedSystem *robot) {
-    update(gc, gv);
-    setGeneralizedForce(gf);
+  void ABA (Eigen::VectorXd & ga_, const Eigen::VectorXd& gc_, const Eigen::VectorXd& gv_, const Eigen::VectorXd& gf_) {
+    update(gc_, gv_);
+    setGeneralizedForce(gf_);
 
-    updateSingleBodyDynamics_toJoint(robot);
-    updateArticulatedDynamics(robot);
+    updateSingleBodyDynamics_toJoint();
+    updateArticulatedDynamics();
 
     Eigen::VectorXd a_p;
     a_p.setZero(6);
+    a_p[2] = 9.81;
 
     for (int i = 0; i < ga.size(); ++i) {
-//      std::cout<<dS(i+1) * gv(i)<<std::endl;
       if (i > 0) {
         ga(i) = (1 / (S(i + 1).transpose() * ArtMassMat[i + 1] * S(i + 1))) * (-S(i + 1).transpose() * \
               (ArtMassMat[i + 1] * (dS(i + 1) * gv(i) + dX(i + 1, i).transpose() * (frameJ_[i] * gv + S(i) * gv(i - 1)) + \
               X(i + 1, i).transpose() * a_p) + ArtBiasedForce[i + 1]) + gf(i));
-        a_p = dS(i+1) * gv(i) + S(i+1) * ga(i) + dX(i+1, i).transpose() * (frameJ_[i] * gv + S(i) * gv(i-1)) + X(i+1, i) * a_p;
+        a_p = dS(i+1) * gv(i) + S(i+1) * ga(i) + dX(i+1, i).transpose() * (frameJ_[i] * gv + S(i) * gv(i-1)) + X(i+1, i).transpose() * a_p;
       } else {
         ga(i) = (1 / (S(i + 1).transpose() * ArtMassMat[i + 1] * S(i + 1))) * (-S(i + 1).transpose() * \
               (ArtMassMat[i + 1] * (dS(i + 1) * gv(i) + dX(i + 1, i).transpose() * (frameJ_[i] * gv) + \
               X(i + 1, i).transpose() * a_p) + ArtBiasedForce[i + 1]) + gf(i));
-        a_p = dS(i+1) * gv(i) + S(i+1) * ga(i) + dX(i+1, i).transpose() * (frameJ_[i] * gv) + X(i+1, i) * a_p;
+        a_p = dS(i+1) * gv(i) + S(i+1) * ga(i) + dX(i+1, i).transpose() * (frameJ_[i] * gv) + X(i+1, i).transpose() * a_p;
       }
-      // TODO: test eq 4
-//      std::cout<<"eq4 test\n"<<gf(i) - S(i+1).transpose() * (ArtMassMat[i+1] * a_p + ArtBiasedForce[i+1])<<std::endl;
-
-
     }
-    std::cout<<"R_[5]\n"<<R_[5]<<std::endl;
     ga_ = ga;
   }
 
@@ -597,13 +485,10 @@ class KINOVA : public Robot {
 };
 
 /// do not change the name of the method
-inline Eigen::MatrixXd getGaUsingABA (const Eigen::VectorXd& gc, const Eigen::VectorXd& gv, const Eigen::VectorXd& gf, const raisim::ArticulatedSystem *robot) {
+inline Eigen::MatrixXd getGaUsingABA (const Eigen::VectorXd& gc, const Eigen::VectorXd& gv, const Eigen::VectorXd& gf) {
   KINOVA kinova;
   Eigen::VectorXd ga;
-  kinova.ABA(ga, gc, gv, gf, robot);
-  std::cout<<ga<<std::endl;
-
-
+  kinova.ABA(ga, gc, gv, gf);
 
   return ga;
 }
