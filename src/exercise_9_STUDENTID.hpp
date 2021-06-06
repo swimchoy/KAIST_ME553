@@ -457,7 +457,7 @@ class KINOVA : public Robot {
 
       a = dS(i+1) * gv(i) + S(i+1) * ga_true(i) + dX(i+1, i).transpose() * vp + X(i+1, i).transpose() * a;
       a_raisim[i+1] = a;
-      std::cout<<"a_raisim_"<<i<<a_raisim[i+1]<<std::endl;
+      std::cout<<"a_raisim_"<<i+1<<a_raisim[i+1]<<std::endl;
     }
 
     for (int i = 0; i < M_j.size(); ++i) {
@@ -529,7 +529,8 @@ class KINOVA : public Robot {
       //TODO: problem
       std::cout<<"check primitive"<<std::endl;
       if (i != 0 && i != 6)
-        std::cout<<gf(i-1) - S(i).transpose() * (M_j[i] * a_raisim[i] + b_j[i] + X(i+1, i) * (ArtMassMat[i+1] * a_raisim[i+1] + ArtBiasedForce[i+1]))<<std::endl;
+        std::cout<<gf(i-1) - S(i).transpose() * (M_j[i] * a_raisim[i] + b_j[i] + X(i+1, i) * \
+                  (ArtMassMat[i+1] * a_raisim[i+1] + ArtBiasedForce[i+1]))<<std::endl;
 
       std::cout<<"check Articulated Dynamics"<<std::endl;
       if (i != 0)
@@ -574,7 +575,9 @@ class KINOVA : public Robot {
       // TODO: test eq 4
 //      std::cout<<"eq4 test\n"<<gf(i) - S(i+1).transpose() * (ArtMassMat[i+1] * a_p + ArtBiasedForce[i+1])<<std::endl;
 
+
     }
+    std::cout<<"R_[5]\n"<<R_[5]<<std::endl;
     ga_ = ga;
   }
 
@@ -599,6 +602,8 @@ inline Eigen::MatrixXd getGaUsingABA (const Eigen::VectorXd& gc, const Eigen::Ve
   Eigen::VectorXd ga;
   kinova.ABA(ga, gc, gv, gf, robot);
   std::cout<<ga<<std::endl;
+
+
 
   return ga;
 }
