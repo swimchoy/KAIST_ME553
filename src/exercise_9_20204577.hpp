@@ -247,15 +247,12 @@ class KINOVA : public Robot {
 
     frameJ_.clear();
     Eigen::MatrixXd J;
-
     J.setZero(6,6);
-    frameJ_.push_back(J);
 
-    for (int e = 1; e <= 7; ++e) {
-      getBodyJ(e-1, relativeJointPos.row(e-1), J);
+    for (int i = 0; i <= 7; ++i) {
+      getBodyJ(i, Eigen::Vector3d::Zero(), J);
       frameJ_.push_back(J);
     }
-
   }
 
   void vectorized_dR () {
@@ -271,8 +268,7 @@ class KINOVA : public Robot {
     Eigen::Vector3d mg;
     for (int i = 0; i <= 7; ++i) {
       mg.setZero();
-      // TODO: Change to -9.81
-      mg[2] = massSet(i) * -0.00;
+      mg[2] = massSet(i) * -9.81;
       mg_.push_back(mg);
     }
   }
@@ -331,6 +327,10 @@ class KINOVA : public Robot {
   Eigen::MatrixXd getComJ (const int & e) {return comJ_[e];}
 
   /// Exercise 9 ///
+  void setGeneralizedForce(const Eigen::VectorXd &gf_) {
+    gf = gf_;
+  }
+
   Eigen::VectorXd S (const int & idx) {
     Eigen::VectorXd s;
     s.setZero(6);
@@ -371,6 +371,7 @@ class KINOVA : public Robot {
       b.setZero(6);
 
       if (i == 6) {
+        /// fixed joint
         double c_m = massSet(i) + massSet(i+1);
         Eigen::Vector3d r_com = (massSet(i) * relativeComPos.row(i) + massSet(i+1) * (relativeComPos.row(i+1) + (framePos.row(i+1) - framePos.row(i)))) / c_m;
         Eigen::Vector3d r1 = relativeComPos.row(i).transpose() - r_com;
@@ -387,6 +388,7 @@ class KINOVA : public Robot {
                   (comJ_[i].bottomRows(3) * gv);
 
       } else {
+        /// movable joints
         M.topLeftCorner(3,3) = massSet(i) * Eigen::Matrix3d::Identity();
         M.topRightCorner(3,3) = -massSet(i) * skew(relativeComPos.row(i));
         M.bottomLeftCorner(3,3) = massSet(i) * skew(relativeComPos.row(i));
@@ -402,70 +404,54 @@ class KINOVA : public Robot {
     }
   }
 
-  void setGeneralizedForce(const Eigen::VectorXd &gf_) {
-    gf = gf_;
-  }
-
   void updateArticulatedDynamics () {
-    ArtMassMat.clear();
-    ArtBiasedForce.clear();
     ArtMassMat.resize(7);
     ArtBiasedForce.resize(7);
 
-    Eigen::MatrixXd ArtM;
-    Eigen::VectorXd ArtB;
-    ArtM.setZero(6,6);
-    ArtB.setZero(6);
+    Eigen::MatrixXd ArtM(6,6);
+    Eigen::VectorXd ArtB(6);
 
     for (int i = 6; i >= 0 ; --i) {
 
       if (i == 6) {
         ArtM = M_j[i];
         ArtB = b_j[i];
-      } else if (i == 0) {
+      } else {
         ArtM = M_j[i] + X(i+1, i) * ArtMassMat[i+1] * X(i+1, i).transpose() + X(i+1, i) * ArtMassMat[i+1] * S(i+1) * \
                (S(i+1).transpose() * ArtMassMat[i+1] * S(i+1)).inverse() * (-S(i+1).transpose() * ArtMassMat[i+1] * X(i+1, i).transpose());
         ArtB = b_j[i] + X(i+1, i) * (ArtMassMat[i+1] * (S(i+1) * (S(i+1).transpose() * ArtMassMat[i+1] * S(i+1)).inverse() * \
                (-S(i+1).transpose() * (ArtMassMat[i+1] * (dS(i+1) * gv(i) + dX(i+1, i).transpose() * (frameJ_[i] * gv)) + ArtB) + gf(i)) + \
                dS(i+1) * gv(i) + dX(i+1, i).transpose() * (frameJ_[i] * gv)) + ArtB);
-      } else {
-        ArtM = M_j[i] + X(i+1, i) * ArtMassMat[i+1] * X(i+1, i).transpose() + X(i+1, i) * ArtMassMat[i+1] * S(i+1) * \
-               (S(i+1).transpose() * ArtMassMat[i+1] * S(i+1)).inverse() * (-S(i+1).transpose() * ArtMassMat[i+1] * X(i+1, i).transpose());
-        ArtB = b_j[i] + X(i+1, i) * (ArtMassMat[i+1] * (S(i+1) * (S(i+1).transpose() * ArtMassMat[i+1] * S(i+1)).inverse() * \
-               (-S(i+1).transpose() * (ArtMassMat[i+1] * (dS(i+1) * gv(i) + dX(i+1, i).transpose() * (frameJ_[i] * gv + S(i) * gv(i-1))) + ArtB) + gf(i)) + \
-               dS(i+1) * gv(i) + dX(i+1, i).transpose() * (frameJ_[i] * gv + S(i) * gv(i-1))) + ArtB);
       }
 
       ArtMassMat[i] = ArtM;
       ArtBiasedForce[i] = ArtB;
     }
+  }
 
+  void ForwardDynamics_ABA () {
+    Eigen::VectorXd a_p;
+    a_p.setZero(6);
+    a_p[2] = 9.81;
+
+    for (int i = 0; i < ga.size(); ++i) {
+      ga(i) = (1 / (S(i + 1).transpose() * ArtMassMat[i + 1] * S(i + 1))) * (-S(i + 1).transpose() * \
+            (ArtMassMat[i + 1] * (dS(i + 1) * gv(i) + dX(i + 1, i).transpose() * (frameJ_[i] * gv) + \
+            X(i + 1, i).transpose() * a_p) + ArtBiasedForce[i + 1]) + gf(i));
+      a_p = dS(i+1) * gv(i) + S(i+1) * ga(i) + dX(i+1, i).transpose() * (frameJ_[i] * gv) + X(i+1, i).transpose() * a_p;
+    }
   }
 
   void ABA (Eigen::VectorXd & ga_, const Eigen::VectorXd& gc_, const Eigen::VectorXd& gv_, const Eigen::VectorXd& gf_) {
     update(gc_, gv_);
     setGeneralizedForce(gf_);
 
+    /// to root: update M^a, b^a
     updateSingleBodyDynamics_toJoint();
     updateArticulatedDynamics();
 
-    Eigen::VectorXd a_p;
-    a_p.setZero(6);
-    a_p[2] = 9.81;
-
-    for (int i = 0; i < ga.size(); ++i) {
-      if (i > 0) {
-        ga(i) = (1 / (S(i + 1).transpose() * ArtMassMat[i + 1] * S(i + 1))) * (-S(i + 1).transpose() * \
-              (ArtMassMat[i + 1] * (dS(i + 1) * gv(i) + dX(i + 1, i).transpose() * (frameJ_[i] * gv + S(i) * gv(i - 1)) + \
-              X(i + 1, i).transpose() * a_p) + ArtBiasedForce[i + 1]) + gf(i));
-        a_p = dS(i+1) * gv(i) + S(i+1) * ga(i) + dX(i+1, i).transpose() * (frameJ_[i] * gv + S(i) * gv(i-1)) + X(i+1, i).transpose() * a_p;
-      } else {
-        ga(i) = (1 / (S(i + 1).transpose() * ArtMassMat[i + 1] * S(i + 1))) * (-S(i + 1).transpose() * \
-              (ArtMassMat[i + 1] * (dS(i + 1) * gv(i) + dX(i + 1, i).transpose() * (frameJ_[i] * gv) + \
-              X(i + 1, i).transpose() * a_p) + ArtBiasedForce[i + 1]) + gf(i));
-        a_p = dS(i+1) * gv(i) + S(i+1) * ga(i) + dX(i+1, i).transpose() * (frameJ_[i] * gv) + X(i+1, i).transpose() * a_p;
-      }
-    }
+    /// to leaves: calculate ga, a_p
+    ForwardDynamics_ABA();
     ga_ = ga;
   }
 
