@@ -256,6 +256,20 @@ class Robot {
 
   /// <Exercise 8> composite rigid body algorithm ///
 
+    void CRBA (Eigen::MatrixXd &MassMat, const Eigen::VectorXd &gc_) {
+      MassMat.setZero(gv.size(), gv.size());
+      update(gc_, Eigen::VectorXd::Zero(gv.size()));
+
+      Eigen::MatrixXd M;
+      Eigen::VectorXd b;
+      for (int i = 0; i < gv.size(); ++i) {
+        for (int j = 0; j <= i; ++j) {
+          compositeBodyDynamics_toJoint(i, j, M, b);
+          MassMat(j, i) = S(j).transpose() * (M * S(i));
+        }
+      }
+    }
+
   void compositeBodyDynamics_toJoint(const int &start, const int &end, Eigen::MatrixXd &M, Eigen::VectorXd &b) {
     double m_c = 0.;
     Eigen::Vector3d r_com;

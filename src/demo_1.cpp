@@ -55,5 +55,4 @@ int main(int argc, char* argv[]) {
   std::cout<<"A is "<<A.rows()<<"X"<<A.cols()<<"\n\n";
 
   std::cout<<Eigen::VectorXd::Ones(6) * 0.<<std::endl;
-
 }
