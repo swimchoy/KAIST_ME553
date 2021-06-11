@@ -1,5 +1,5 @@
 #include "raisim/RaisimServer.hpp"
-#include "exercise_8_STUDENTID.hpp"
+#include "exercise_8_20204577.hpp"
 
 
 int main(int argc, char* argv[]) {
@@ -11,7 +11,7 @@ int main(int argc, char* argv[]) {
   world.addGround();
 
   // anymal
-  auto anymal = world.addArticulatedSystem(binaryPath.getDirectory() + "/rsc/anymal/urdf/anymal_oneleg.urdf");
+  auto anymal = world.addArticulatedSystem(binaryPath.getDirectory() + "../rsc/anymal/urdf/anymal_oneleg.urdf");
   anymal->setName("anymal");
   server.focusOn(anymal);
 

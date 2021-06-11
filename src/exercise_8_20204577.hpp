@@ -156,11 +156,10 @@ class Robot {
       CompositeRigidBodyAlgorithm();
 
       /// CRBA to get NonlinearTerm
-      runRNEforNonlinearities();
+      runRNE_Nonlinearities();
 
     } else {
-      /// the default algorithm is PNE
-      /// PNE to get MassMatrix and NonlinearTerm
+      /// default: PNE to get MassMatrix and NonlinearTerm
       projectedNewtonEuler();
     }
   }
@@ -172,12 +171,12 @@ class Robot {
     for (int i = 0; i < massSet.size(); ++i)
       MassMatrix += comJ_[i].transpose() * M_[i] * comJ_[i];
 
+    /// nonlinear term
+    Nonlinearities.setZero(dof);
+
     vectorized_dR();
     vectorized_com_dJ();
     vectorized_GravityForce();
-
-    /// nonlinear term
-    Nonlinearities.setZero(dof);
 
     for (int i = 0; i < massSet.size(); ++i) {
       Nonlinearities += comJ_[i].topRows(3).transpose() * massSet(i) * com_dJ_[i].topRows(3) * gv + \
@@ -235,8 +234,8 @@ class Robot {
     int a_idx = 0;
 
     for (int idx = 0; idx < relativeJointPos.rows(); ++idx) {
-      if (jointSet[idx] == "prismatic") {
-        relativeJointPos.row(idx) = R_[idx] * (xyzSet.row(idx+1).transpose() + a_gc(a_idx) * axisSet.row(a_idx).transpose());
+      if (jointSet[idx+1] == "prismatic") {
+        relativeJointPos.row(idx) = R_[idx] * (xyzSet.row(idx+1).transpose() + a_gc(a_idx+1) * axisSet.row(a_idx+1).transpose());
       } else {
         relativeJointPos.row(idx) = R_[idx] * xyzSet.row(idx+1).transpose();
       }
@@ -394,7 +393,6 @@ class Robot {
           compositeBodyDynamics_toJoint(joint_j, massSet.size() - 1, M, b);
           r_ij = relativeJointPos.middleRows(joint_i, joint_j - joint_i).colwise().sum();
           a_j = X(joint_j, joint_i).transpose() * S(joint_i);
-//          a_j.head(3) += skew(a_j.tail(3)) * r_ij;
           MassMatrix.bottomRightCorner(a_dof, a_dof)(a_joint(joint_j), a_joint(joint_i)) = S(joint_j).transpose() * (M * a_j);
 
           /// symmetric
@@ -463,7 +461,7 @@ class Robot {
 
   /// <Exercise 8> recursive Newton Euler ///
 
-  void runRNEforNonlinearities () {
+  void runRNE_Nonlinearities () {
     Eigen::VectorXd ga_ = ga;
     Eigen::VectorXd gf_ = gf;
     ga.setZero(dof);
@@ -495,7 +493,7 @@ class Robot {
 
       /// parent to child
       accel.head(3) += skew(accel.tail(3)) * relativeJointPos.row(joint).transpose() +
-          skew(frameJ_[joint].bottomRows(3) * gv) * skew(frameJ_[joint].bottomRows(3) * gv) * relativeJointPos.row(joint).transpose();
+          skew(frameJ_[joint].bottomRows(3) * gv) * (frameJ_[joint+1].topRows(3) * gv - frameJ_[joint].topRows(3) * gv);
 
       /// i to i'
       if (a_joint(joint+1) != -1) {
@@ -584,7 +582,11 @@ class Robot {
   Eigen::MatrixXd X (const int & B, const int & P) {
     Eigen::MatrixXd x(6,6);
     x.setIdentity();
-    x.bottomLeftCorner(3,3) = skew(framePos.row(B) - framePos.row(P));
+//    if (jointSet[B] == "prismatic") {
+//      x.bottomLeftCorner(3,3) = skew(framePos.row(B) - a_gc(a_joint(B)) * (R_[B] * axisSet.row(a_joint(B)).transpose()).transpose() - framePos.row(P));
+//    } else {
+      x.bottomLeftCorner(3, 3) = skew(framePos.row(B) - framePos.row(P));
+//    }
     return x;
   }
 
@@ -693,6 +695,7 @@ class Robot {
   Eigen::MatrixXd getNonlinearities () { return Nonlinearities; }
   Eigen::Matrix3d getFrameOrientation (const int & e) { return R_[e]; }
   Eigen::Vector3d getFramePosition (const int & e) { return framePos.row(e); }
+  Eigen::MatrixXd getFrameJacobian (const int & j) { return frameJ_[j]; }
   Eigen::Vector3d getRelativeJointPos (const int & e) { return relativeJointPos.row(e); }
   Eigen::Vector3d getRelativeComPos (const int & e) { return relativeComPos.row(e); }
   Eigen::MatrixXd getComJ (const int & e) {return comJ_[e];}
@@ -803,7 +806,6 @@ class ANYMAL_ONELEG : public Robot {
 /// do not change the name of the method
 inline Eigen::MatrixXd getMassMatrixUsingCRBA (const Eigen::VectorXd& gc, const raisim::ArticulatedSystem * robot) {
 
-  /// !!!!!!!!!! NO RAISIM FUNCTIONS HERE !!!!!!!!!!!!!!!!!
   ANYMAL_ONELEG anymal_oneleg;
 
   anymal_oneleg.setAlgorithm("CRBA+RNE");
@@ -815,7 +817,6 @@ inline Eigen::MatrixXd getMassMatrixUsingCRBA (const Eigen::VectorXd& gc, const 
 /// do not change the name of the method
 inline Eigen::VectorXd getNonlinearitiesUsingRNE (const Eigen::VectorXd& gc, const Eigen::VectorXd& gv, const raisim::ArticulatedSystem * robot) {
 
-  /// !!!!!!!!!! NO RAISIM FUNCTIONS HERE !!!!!!!!!!!!!!!!!
   ANYMAL_ONELEG anymal_oneleg;
 
   anymal_oneleg.setAlgorithm("CRBA+RNE");
