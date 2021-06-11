@@ -563,6 +563,8 @@ class Robot {
     s.setZero(6);
     if (jointSet[joint] == "revolute")
       s.tail(3) = R_[joint] * axisSet.row(a_joint(joint)).transpose();
+    else if (jointSet[joint] == "prismatic")
+      s.head(3) = R_[joint] * axisSet.row(a_joint(joint)).transpose();
     else
       std::cout<<"this kind of joint is not yet provided"<<std::endl;
     return s;
@@ -572,6 +574,8 @@ class Robot {
     Eigen::VectorXd ds = S(joint);
     if (jointSet[joint] == "revolute")
       ds.tail(3) = skew(frameJ_[joint].bottomRows(3) * gv) * ds.tail(3);
+    else if (jointSet[joint] == "prismatic")
+      ds.head(3) = skew(frameJ_[joint].bottomRows(3) * gv) * ds.head(3);
     else
       std::cout<<"this kind of joint is not yet provided"<<std::endl;
     return ds;
