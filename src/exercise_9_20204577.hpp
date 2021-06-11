@@ -16,81 +16,61 @@ Eigen::MatrixXd pInv (const Eigen::MatrixXd &A) {
   return V * S * U.transpose();
 }
 
+Eigen::Matrix3d inertiaMat (const Eigen::VectorXd i) {
+  Eigen::Matrix3d I;
+  I << i(0), i(1), i(2), i(1), i(3), i(4), i(2), i(4), i(5);
+  return I;
+}
+
+void changeInertiaFrame (const std::vector<Eigen::Matrix3d> &InertiaVec_B, const std::vector<Eigen::Matrix3d> &R_, std::vector<Eigen::Matrix3d> &InertiaVec_W) {
+  InertiaVec_W.clear();
+  for (int i = 0; i < InertiaVec_B.size(); i++)
+    InertiaVec_W.push_back(R_[i] * InertiaVec_B[i] * R_[i].transpose());
+}
+
+void spatialInertiaMat (std::vector<Eigen::MatrixXd> &Mi, const Eigen::VectorXd &massSet, const std::vector<Eigen::Matrix3d> &InertiaVec) {
+  Eigen::MatrixXd _M;
+  Eigen::Matrix3d I3; I3.setIdentity();
+  for (int idx = 0; idx < 8; ++idx) {
+    _M.setZero(6,6);
+    _M.topLeftCorner(3,3) = massSet(idx) * I3;
+    _M.bottomRightCorner(3,3) = InertiaVec[idx];
+    Mi.push_back(_M);
+  }
+}
+
+Eigen::Matrix3d rotation_X (const double angle) {
+  Eigen::Matrix3d R;
+  R << 1, 0, 0, 0, cos(angle), -sin(angle), 0, sin(angle), cos(angle);
+  return R;
+}
+
+Eigen::Matrix3d rotation_Y (const double angle) {
+  Eigen::Matrix3d R;
+  R << cos(angle), 0, sin(angle), 0, 1, 0, -sin(angle), 0, cos(angle);
+  return R;
+}
+
+Eigen::Matrix3d rotation_Z (const double angle) {
+  Eigen::Matrix3d R;
+  R << cos(angle), -sin(angle), 0, sin(angle), cos(angle), 0, 0, 0, 1;
+  return R;
+}
+
+Eigen::Matrix3d FixedFrameRPY (const Eigen::Vector3d &rpy) {
+  return rotation_Z(rpy(2)) * rotation_Y(rpy(1)) * rotation_X(rpy(0));
+}
+
+Eigen::Matrix3d skew (const Eigen::Vector3d &w) {
+  Eigen::Matrix3d S;
+  S << 0, -w(2), w(1), w(2), 0, -w(0), -w(1), w(0), 0;
+  return S;
+}
+
+
 class Robot {
 
  public:
-
-  Eigen::Matrix3d inertiaMat (const Eigen::VectorXd i) {
-    Eigen::Matrix3d I;
-    I << i(0), i(1), i(2), i(1), i(3), i(4), i(2), i(4), i(5);
-    return I;
-  }
-
-  void changeInertiaFrame (const std::vector<Eigen::Matrix3d> &InertiaVec_B, const std::vector<Eigen::Matrix3d> &R_, std::vector<Eigen::Matrix3d> &InertiaVec_W) {
-    InertiaVec_W.clear();
-    for (int i = 0; i < InertiaVec_B.size(); i++)
-      InertiaVec_W.push_back(R_[i] * InertiaVec_B[i] * R_[i].transpose());
-  }
-
-  void spatialInertiaMat (std::vector<Eigen::MatrixXd> &Mi, const Eigen::VectorXd &massSet, const std::vector<Eigen::Matrix3d> &InertiaVec) {
-    Eigen::MatrixXd _M;
-    Eigen::Matrix3d I3; I3.setIdentity();
-    for (int idx = 0; idx < 8; ++idx) {
-      _M.setZero(6,6);
-      _M.topLeftCorner(3,3) = massSet(idx) * I3;
-      _M.bottomRightCorner(3,3) = InertiaVec[idx];
-      Mi.push_back(_M);
-    }
-  }
-
-  Eigen::Matrix3d rotation_X (const double angle) {
-    Eigen::Matrix3d R;
-    R << 1, 0, 0, 0, cos(angle), -sin(angle), 0, sin(angle), cos(angle);
-    return R;
-  }
-
-  Eigen::Matrix3d rotation_Y (const double angle) {
-    Eigen::Matrix3d R;
-    R << cos(angle), 0, sin(angle), 0, 1, 0, -sin(angle), 0, cos(angle);
-    return R;
-  }
-
-  Eigen::Matrix3d rotation_Z (const double angle) {
-    Eigen::Matrix3d R;
-    R << cos(angle), -sin(angle), 0, sin(angle), cos(angle), 0, 0, 0, 1;
-    return R;
-  }
-
-  Eigen::Matrix3d FixedFrameRPY (const Eigen::Vector3d &rpy) {
-    return rotation_Z(rpy(2)) * rotation_Y(rpy(1)) * rotation_X(rpy(0));
-  }
-
-  Eigen::Matrix3d skew (const Eigen::Vector3d &w) {
-    Eigen::Matrix3d S;
-    S << 0, -w(2), w(1), w(2), 0, -w(0), -w(1), w(0), 0;
-    return S;
-  }
-
-};
-
-class KINOVA : public Robot {
-
- public:
-
-  KINOVA () {
-    rpySet.setZero(7,3);
-    xyzSet.setZero(7,3);
-    comSet.setZero(8,3);
-    massSet.setZero(8);
-    b_I_.clear();
-
-    kinovaConfig();
-
-    gc.setZero(6);
-    gv.setZero(6);
-    ga.setZero(6);
-    gf.setZero(6);
-  }
 
   void update (const Eigen::VectorXd &gc_, const Eigen::VectorXd &gv_) {
     gc = gc_;
@@ -98,50 +78,6 @@ class KINOVA : public Robot {
 
     updateKinematics();
     updateDynamics();
-  }
-
-  void kinovaConfig () {
-
-    xyzSet << 0.0, 0.0, 0.15675,
-        0.0, 0.0016, -0.11875,
-        0.0, -0.410, 0.0,
-        0.0, 0.2073, -0.0114,
-        0.0, 0.0, -0.10375,
-        0.0, 0.10375, 0.0,
-        0.0, 0.0, -0.1600;
-
-    rpySet << 0.0, 3.14159265359, 0.0,
-        -1.57079632679, 0.0, 3.14159265359,
-        0.0, 3.14159265359, 0.0,
-        -1.57079632679, 0.0, 3.14159265359,
-        1.57079632679, 0.0, 3.14159265359,
-        -1.57079632679, 0.0, 3.14159265359,
-        3.14159265359, 0.0, 0.0;
-
-    comSet << 0, 0, 0.1255,
-        0, -0.002, -0.0605,
-        0, -0.2065, -0.01,
-        0, 0.081, -0.0086,
-        0, 0.0028848942, -0.0541932613,
-        0, 0.0497208855, -0.0028562765,
-        0, 0, -0.06,
-        0, 0, 0;
-
-    massSet << 0.46784, 0.7477, 0.99, 0.6763, 0.463, 0.463, 1.327, 0.01;
-
-    Eigen::MatrixXd inertiaConfig; inertiaConfig.setZero(8,6);
-    inertiaConfig << 0.000951270861568, 0, 0, 0.000951270861568, 0, 0.000374272,
-        0.00152031725204, 0, 0, 0.00152031725204, 0, 0.00059816,
-        0.010502207991, 0, 0, 0.000792, 0, 0.010502207991,
-        0.00142022431908, 0, 0, 0.000304335, 0, 0.00142022431908,
-        0.0004321316048, 0, 0, 0.0004321316048, 0, 9.26e-05,
-        0.0004321316048, 0, 0, 9.26e-05, 0, 0.0004321316048,
-        0.0004403232387, 0, 0, 0.0004403232387, 0, 0.0007416,
-        0.01, 0, 0, 0.01, 0, 0.01;
-
-    for (int idx = 0; idx < 8; ++idx) {
-      b_I_.push_back(inertiaMat(inertiaConfig.row(idx)));
-    }
   }
 
   void vectorized_R () {
@@ -182,14 +118,13 @@ class KINOVA : public Robot {
   void framePositions () {
 
     framePos.setZero(8,3);
-    zero3d.setZero();
 
     Eigen::MatrixXd tmp_relativePos;
     tmp_relativePos = relativeJointPos;
 
     for (int idx = 0; idx < tmp_relativePos.rows(); ++idx) {
       framePos.row(framePos.rows() - (idx+1)) = tmp_relativePos.colwise().sum();
-      tmp_relativePos.row(tmp_relativePos.rows() - (idx+1)) = zero3d;
+      tmp_relativePos.row(tmp_relativePos.rows() - (idx+1)) = Eigen::Vector3d::Zero();
     }
   }
 
@@ -326,6 +261,34 @@ class KINOVA : public Robot {
   Eigen::Vector3d getRelativeComPos (const int & e) { return relativeComPos.row(e); }
   Eigen::MatrixXd getComJ (const int & e) {return comJ_[e];}
 
+  void compositeBodyDynamics_toJoint(const int &start, const int &end, Eigen::MatrixXd &M, Eigen::VectorXd &b) {
+    double m_c = 0.;
+    Eigen::Vector3d r_com;
+    Eigen::Matrix3d I_c;
+
+    r_com.setZero();
+    I_c.setZero();
+    M.setZero(6,6);
+    b.setZero(6);
+
+    for (int i = start; i <= end; ++i) {
+      r_com += massSet(i) * (framePos.row(i) + relativeComPos.row(i));
+      m_c += massSet(i);
+    }
+    r_com /= m_c;
+
+    for (int i = start; i <= end; ++i)
+      I_c += w_I_[i] - massSet(i) * skew(framePos.row(i) + relativeComPos.row(i) - r_com.transpose()) * skew(framePos.row(i) + relativeComPos.row(i) - r_com.transpose());
+
+    M.topLeftCorner(3,3) = m_c * Eigen::Matrix3d::Identity();
+    M.topRightCorner(3,3) = -m_c * skew(r_com.transpose() - framePos.row(start));
+    M.bottomLeftCorner(3,3) = m_c * skew(r_com.transpose() - framePos.row(start));
+    M.bottomRightCorner(3,3) = I_c - m_c * skew(r_com.transpose() - framePos.row(start)) * skew(r_com.transpose() - framePos.row(start));
+
+    b.head(3) = m_c * skew(frameJ_[start].bottomRows(3) * gv) * skew(frameJ_[start].bottomRows(3) * gv) * (r_com - framePos.row(start).transpose());
+    b.tail(3) = skew(frameJ_[start].bottomRows(3) * gv) * M.bottomRightCorner(3,3) * (frameJ_[start].bottomRows(3) * gv);
+  }
+
   /// Exercise 9 ///
   void setGeneralizedForce(const Eigen::VectorXd &gf_) {
     gf = gf_;
@@ -372,20 +335,7 @@ class KINOVA : public Robot {
 
       if (i == 6) {
         /// fixed joint
-        double c_m = massSet(i) + massSet(i+1);
-        Eigen::Vector3d r_com = (massSet(i) * relativeComPos.row(i) + massSet(i+1) * (relativeComPos.row(i+1) + (framePos.row(i+1) - framePos.row(i)))) / c_m;
-        Eigen::Vector3d r1 = relativeComPos.row(i).transpose() - r_com;
-        Eigen::Vector3d r2 = relativeComPos.row(i+1).transpose() + (framePos.row(i+1) - framePos.row(i)).transpose() - r_com;
-        Eigen::Matrix3d c_I = w_I_[i] + w_I_[i+1] - massSet(i) * skew(r1) * skew(r1) - massSet(i+1) * skew(r2) * skew(r2);
-
-        M.topLeftCorner(3,3) = c_m * Eigen::Matrix3d::Identity();
-        M.topRightCorner(3,3) = -c_m * skew(r_com);
-        M.bottomLeftCorner(3,3) = c_m * skew(r_com);
-        M.bottomRightCorner(3,3) = c_I - c_m * skew(r_com) * skew(r_com);
-
-        b.head(3) = c_m * skew(comJ_[i].bottomRows(3) * gv) * skew(comJ_[i].bottomRows(3) * gv) * (r_com);
-        b.tail(3) = skew(comJ_[i].bottomRows(3) * gv) * (c_I - c_m * skew(r_com) * skew(r_com)) * \
-                  (comJ_[i].bottomRows(3) * gv);
+        compositeBodyDynamics_toJoint(6, 7, M, b);
 
       } else {
         /// movable joints
@@ -455,9 +405,8 @@ class KINOVA : public Robot {
     ga_ = ga;
   }
 
- private:
+ protected:
 
-  Eigen::Vector3d zero3d;
   Eigen::VectorXd gc, gv, massSet, Nonlinearities;
   Eigen::MatrixXd rpySet, xyzSet, comSet, MassMatrix, relativeJointPos, relativeComPos, framePos;
   std::vector<Eigen::Vector3d> mg_;
@@ -468,6 +417,71 @@ class KINOVA : public Robot {
   Eigen::VectorXd ga, gf;
   std::vector<Eigen::MatrixXd> ArtMassMat, M_j;
   std::vector<Eigen::VectorXd> ArtBiasedForce, b_j;
+};
+
+class KINOVA : public Robot {
+
+ public:
+
+  KINOVA () {
+    rpySet.setZero(7,3);
+    xyzSet.setZero(7,3);
+    comSet.setZero(8,3);
+    massSet.setZero(8);
+    b_I_.clear();
+
+    kinovaConfig();
+
+    gc.setZero(6);
+    gv.setZero(6);
+    ga.setZero(6);
+    gf.setZero(6);
+  }
+
+  void kinovaConfig () {
+
+    xyzSet << 0.0, 0.0, 0.15675,
+        0.0, 0.0016, -0.11875,
+        0.0, -0.410, 0.0,
+        0.0, 0.2073, -0.0114,
+        0.0, 0.0, -0.10375,
+        0.0, 0.10375, 0.0,
+        0.0, 0.0, -0.1600;
+
+    rpySet << 0.0, 3.14159265359, 0.0,
+        -1.57079632679, 0.0, 3.14159265359,
+        0.0, 3.14159265359, 0.0,
+        -1.57079632679, 0.0, 3.14159265359,
+        1.57079632679, 0.0, 3.14159265359,
+        -1.57079632679, 0.0, 3.14159265359,
+        3.14159265359, 0.0, 0.0;
+
+    comSet << 0, 0, 0.1255,
+        0, -0.002, -0.0605,
+        0, -0.2065, -0.01,
+        0, 0.081, -0.0086,
+        0, 0.0028848942, -0.0541932613,
+        0, 0.0497208855, -0.0028562765,
+        0, 0, -0.06,
+        0, 0, 0;
+
+    massSet << 0.46784, 0.7477, 0.99, 0.6763, 0.463, 0.463, 1.327, 0.01;
+
+    Eigen::MatrixXd inertiaConfig; inertiaConfig.setZero(8,6);
+    inertiaConfig << 0.000951270861568, 0, 0, 0.000951270861568, 0, 0.000374272,
+        0.00152031725204, 0, 0, 0.00152031725204, 0, 0.00059816,
+        0.010502207991, 0, 0, 0.000792, 0, 0.010502207991,
+        0.00142022431908, 0, 0, 0.000304335, 0, 0.00142022431908,
+        0.0004321316048, 0, 0, 0.0004321316048, 0, 9.26e-05,
+        0.0004321316048, 0, 0, 9.26e-05, 0, 0.0004321316048,
+        0.0004403232387, 0, 0, 0.0004403232387, 0, 0.0007416,
+        0.01, 0, 0, 0.01, 0, 0.01;
+
+    for (int idx = 0; idx < 8; ++idx) {
+      b_I_.push_back(inertiaMat(inertiaConfig.row(idx)));
+    }
+  }
+
 };
 
 /// do not change the name of the method
