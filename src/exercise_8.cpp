@@ -24,12 +24,12 @@ int main(int argc, char* argv[]) {
   anymal->setState(gc, gv);
   world.integrate1();
 
-  if((getMassMatrixUsingCRBA(gc) - anymal->getMassMatrix().e()).norm() < 1e-8)
+  if((getMassMatrixUsingCRBA(gc, anymal) - anymal->getMassMatrix().e()).norm() < 1e-8)
     std::cout<<"CRBA passed"<<std::endl;
   else
     std::cout<<"CRBA failed"<<std::endl;
 
-  if((getNonlinearitiesUsingRNE(gc, gv) - anymal->getNonlinearities().e()).norm() < 1e-8)
+  if((getNonlinearitiesUsingRNE(gc, gv, anymal) - anymal->getNonlinearities().e()).norm() < 1e-8)
     std::cout<<"RNE passed "<<std::endl;
   else
     std::cout<<"RNE failed"<<std::endl;

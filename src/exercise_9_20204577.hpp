@@ -261,6 +261,31 @@ class Robot {
   Eigen::Vector3d getRelativeComPos (const int & e) { return relativeComPos.row(e); }
   Eigen::MatrixXd getComJ (const int & e) {return comJ_[e];}
 
+  void CRBA (Eigen::MatrixXd &MassMat, const Eigen::VectorXd &gc_) {
+    MassMat.setZero(gv.size(), gv.size());
+    update(gc_, Eigen::VectorXd::Zero(gv.size()));
+
+    Eigen::VectorXi joint(gv.size());
+    joint.setLinSpaced(6,1,6);
+    int end_body = 7;
+
+    Eigen::MatrixXd M;
+    Eigen::VectorXd b, a_j;
+    Eigen::Vector3d r_ij;
+
+    for (int j = 0; j < gv.size(); ++j) {
+      for (int i = 0; i <= j; ++i) {
+        compositeBodyDynamics_toJoint(joint(j), end_body, M, b);
+        r_ij = relativeJointPos.middleRows(joint(i), joint(j) - joint(i)).colwise().sum();
+        a_j = S(joint(i));
+        a_j.head(3) += skew(a_j.tail(3)) * r_ij;
+        MassMat(j, i) = S(joint(j)).transpose() * (M * a_j);
+        if (i != j)
+          MassMat(i, j) = MassMat(j, i);
+      }
+    }
+  }
+
   void compositeBodyDynamics_toJoint(const int &start, const int &end, Eigen::MatrixXd &M, Eigen::VectorXd &b) {
     double m_c = 0.;
     Eigen::Vector3d r_com;
@@ -489,6 +514,9 @@ inline Eigen::MatrixXd getGaUsingABA (const Eigen::VectorXd& gc, const Eigen::Ve
   KINOVA kinova;
   Eigen::VectorXd ga;
   kinova.ABA(ga, gc, gv, gf);
+
+  Eigen::MatrixXd M_;
+  kinova.CRBA(M_, gc);
 
   return ga;
 }

@@ -31,7 +31,7 @@ void changeInertiaFrame (const std::vector<Eigen::Matrix3d> &InertiaVec_B, const
 void spatialInertiaMat (std::vector<Eigen::MatrixXd> &Mi, const Eigen::VectorXd &massSet, const std::vector<Eigen::Matrix3d> &InertiaVec) {
   Eigen::MatrixXd _M;
   Eigen::Matrix3d I3; I3.setIdentity();
-  for (int idx = 0; idx < 8; ++idx) {
+  for (int idx = 0; idx < massSet.size(); ++idx) {
     _M.setZero(6,6);
     _M.topLeftCorner(3,3) = massSet(idx) * I3;
     _M.bottomRightCorner(3,3) = InertiaVec[idx];
@@ -67,6 +67,52 @@ Eigen::Matrix3d skew (const Eigen::Vector3d &w) {
   return S;
 }
 
+Eigen::Matrix3d QuaternionToRotMat (const Eigen::Vector4d &q) {
+  Eigen::Matrix3d R;
+  R << 1 - 2 * std::pow(q(2), 2) - 2 * std::pow(q(3), 2),
+      2 * q(1) * q(2) - 2 * q(0) * q(3),
+      2 * q(1) * q(3) + 2 * q(0) * q(2),
+      2 * q(1) * q(2) + 2 * q(0) * q(3),
+      1 - 2 * std::pow(q(1), 2) - 2 * std::pow(q(3), 2),
+      2 * q(2) * q(3) - 2 * q(0) * q(1),
+      2 * q(1) * q(3) - 2 * q(0) * q(2),
+      2 * q(2) * q(3) + 2 * q(0) * q(1),
+      1 - 2 * std::pow(q(1), 2) - 2 * std::pow(q(2), 2);
+  return R;
+}
+Eigen::Vector4d RotMatToQuaternion (const Eigen::Matrix3d &M) {
+  double t, r, s;
+  Eigen::Vector4d q;
+  t = M(0,0) + M(1,1) + M(2,2);
+  r = std::sqrt(1+t);
+  s = 1 / (2*r);
+  q << 0.5 * r,
+      (M(2,1) - M(1,2)) * s,
+      (M(0,2) - M(2,0)) * s,
+      (M(1,0) - M(0,1)) * s;
+  return q;
+}
+Eigen::Matrix3d RotVecToRotMat (Eigen::Vector3d r) {
+  Eigen::Matrix3d R;
+  r += 1e-20 * Eigen::Vector3d::Ones();
+  Eigen::Vector3d u = (1/r.norm()) * r;
+  R << u[0]*u[0]*(1-std::cos(r.norm()))+std::cos(r.norm()),     u[0]*u[1]*(1-std::cos(r.norm()))-u[2]*std::sin(r.norm()), u[0]*u[2]*(1-std::cos(r.norm()))+u[1]*std::sin(r.norm()),
+      u[1]*u[0]*(1-std::cos(r.norm()))+u[2]*std::sin(r.norm()), u[1]*u[1]*(1-std::cos(r.norm()))+std::cos(r.norm()),      u[1]*u[2]*(1-std::cos(r.norm()))-u[0]*std::sin(r.norm()),
+      u[2]*u[0]*(1-std::cos(r.norm()))-u[1]*std::sin(r.norm()), u[2]*u[1]*(1-std::cos(r.norm()))+u[0]*std::sin(r.norm()), u[2]*u[2]*(1-std::cos(r.norm()))+std::cos(r.norm());
+  return R;
+}
+Eigen::Vector3d RotMatToRotVec (const Eigen::Matrix3d &R) {
+  double theta, r, t;
+  Eigen::Vector3d u;
+  u << R(2,1) - R(1,2),
+      R(0,2) - R(2,0),
+      R(1,0) - R(0,1);
+  r = u.norm();
+  t = R(0,0) + R(1,1) + R(2,2);
+  theta = std::atan2(r, t-1);
+  return theta * u;
+}
+
 
 class Robot {
 
@@ -78,159 +124,6 @@ class Robot {
 
     updateKinematics();
     updateDynamics();
-  }
-
-  void vectorized_R () {
-
-    R_.clear();
-
-    Eigen::Matrix3d rotMat;
-    rotMat.setIdentity();
-    R_.push_back(rotMat);
-
-    for (int joint = 0; joint < gc.size(); ++joint) {
-      rotMat = rotMat * FixedFrameRPY(rpySet.row(joint)) * rotation_Z(gc(joint)) ;
-      R_.push_back(rotMat);
-    }
-
-    rotMat = rotMat * FixedFrameRPY(rpySet.row(gc.size()));
-    R_.push_back(rotMat);
-  }
-
-  void relativeJointPositions () {
-
-    relativeJointPos.setZero(7,3);
-
-    for (int idx = 0; idx < relativeJointPos.rows(); ++idx) {
-      relativeJointPos.row(idx) = R_[idx] * xyzSet.row(idx).transpose();
-    }
-  }
-
-  void relativeComPositions () {
-
-    relativeComPos.setZero(8,3);
-
-    for (int idx = 0; idx < relativeComPos.rows(); ++idx) {
-      relativeComPos.row(idx) = R_[idx] * comSet.row(idx).transpose();
-    }
-  }
-
-  void framePositions () {
-
-    framePos.setZero(8,3);
-
-    Eigen::MatrixXd tmp_relativePos;
-    tmp_relativePos = relativeJointPos;
-
-    for (int idx = 0; idx < tmp_relativePos.rows(); ++idx) {
-      framePos.row(framePos.rows() - (idx+1)) = tmp_relativePos.colwise().sum();
-      tmp_relativePos.row(tmp_relativePos.rows() - (idx+1)) = Eigen::Vector3d::Zero();
-    }
-  }
-
-  void getBodyJ (const int &root_body, const Eigen::Vector3d &pos, Eigen::MatrixXd &J) {
-
-    J.setZero(6,6);
-
-    for (int i = 0; i < root_body; ++i) {
-      if (i < 6) {
-        J.topRows(3).col(i) = -skew(framePos.row(root_body) + pos.transpose() - framePos.row(i+1))*(R_[i + 1].col(2));
-        J.bottomRows(3).col(i) = R_[i + 1].col(2);
-      }
-    }
-  }
-
-  void getBodyJdot (const int &root_body, const Eigen::Vector3d &pos, Eigen::MatrixXd &dJ) {
-
-    Eigen::MatrixXd J;
-    J.setZero(6,6);
-    dJ.setZero(6,6);
-
-    for (int i = 0; i < root_body; ++i) {
-      getBodyJ(root_body, pos, J);
-      if (i < 6) {
-        dJ.topRows(3).col(i) = -skew((J * gv).head(3) - (frameJ_[i+1] * gv).head(3)) * (R_[i+1].col(2)) - \
-                              skew(framePos.row(root_body) + pos.transpose() - framePos.row(i+1)) * (dR_[i+1].col(2));
-        dJ.bottomRows(3).col(i) = dR_[i+1].col(2);
-      }
-    }
-  }
-
-  void vectorized_comJ () {
-
-    comJ_.clear();
-    Eigen::MatrixXd J;
-
-    for (int e = 0; e <= 7; ++e) {
-      getBodyJ(e, relativeComPos.row(e), J);
-      comJ_.push_back(J);
-    }
-  }
-
-  void vectorized_com_dJ () {
-
-    com_dJ_.clear();
-    Eigen::MatrixXd dJ;
-
-    for (int e = 0; e <= 7; ++e) {
-      getBodyJdot(e, relativeComPos.row(e), dJ);
-      com_dJ_.push_back(dJ);
-    }
-  }
-
-  void vectorized_frameJ () {
-
-    frameJ_.clear();
-    Eigen::MatrixXd J;
-    J.setZero(6,6);
-
-    for (int i = 0; i <= 7; ++i) {
-      getBodyJ(i, Eigen::Vector3d::Zero(), J);
-      frameJ_.push_back(J);
-    }
-  }
-
-  void vectorized_dR () {
-    dR_.clear();
-
-    for (int i = 0; i < R_.size(); ++i) {
-      dR_.push_back(skew(comJ_[i].bottomRows(3) * gv) * R_[i]);
-    }
-  }
-
-  void vectorized_GravityForce () {
-    mg_.clear();
-    Eigen::Vector3d mg;
-    for (int i = 0; i <= 7; ++i) {
-      mg.setZero();
-      mg[2] = massSet(i) * -9.81;
-      mg_.push_back(mg);
-    }
-  }
-
-  void updateDynamics () {
-    /// mass matrix
-    MassMatrix.setZero(6,6);
-    vectorized_comJ();
-
-    for (int i = 0; i <= 7; ++i)
-      MassMatrix += comJ_[i].transpose() * M_[i] * comJ_[i];
-
-    /// nonlinear term
-    Nonlinearities.setZero(6);
-
-    vectorized_frameJ();
-    vectorized_dR();
-    vectorized_com_dJ();
-    vectorized_GravityForce();
-
-    for (int i = 0; i <= 7; ++i) {
-      Nonlinearities += comJ_[i].topRows(3).transpose() * massSet(i) * com_dJ_[i].topRows(3) * gv + \
-                        comJ_[i].bottomRows(3).transpose() * w_I_[i] * com_dJ_[i].bottomRows(3) * gv + \
-                        comJ_[i].bottomRows(3).transpose() * skew(comJ_[i].bottomRows(3) * gv) * (w_I_[i] * comJ_[i].bottomRows(3) * gv) + \
-                        -comJ_[i].topRows(3).transpose() * mg_[i];
-    }
-
   }
 
   void updateKinematics () {
@@ -253,22 +146,292 @@ class Robot {
     framePositions();
   }
 
+  void updateDynamics () {
+    /// update Jacobians
+    vectorized_comJ();
+    vectorized_frameJ();
 
-  /// <Exercise 8> composite rigid body algorithm ///
+    if (algorithm == "CRBA+RNE") {
+      /// CRBA to get MassMatrix
+      CompositeRigidBodyAlgorithm();
 
-    void CRBA (Eigen::MatrixXd &MassMat, const Eigen::VectorXd &gc_) {
-      MassMat.setZero(gv.size(), gv.size());
-      update(gc_, Eigen::VectorXd::Zero(gv.size()));
+      /// CRBA to get NonlinearTerm
+      runRNEforNonlinearities();
 
-      Eigen::MatrixXd M;
-      Eigen::VectorXd b;
-      for (int i = 0; i < gv.size(); ++i) {
-        for (int j = 0; j <= i; ++j) {
-          compositeBodyDynamics_toJoint(i, j, M, b);
-          MassMat(j, i) = S(j).transpose() * (M * S(i));
+    } else {
+      /// the default algorithm is PNE
+      /// PNE to get MassMatrix and NonlinearTerm
+      projectedNewtonEuler();
+    }
+  }
+
+  void projectedNewtonEuler () {
+    /// mass matrix
+    MassMatrix.setZero(dof,dof);
+
+    for (int i = 0; i < massSet.size(); ++i)
+      MassMatrix += comJ_[i].transpose() * M_[i] * comJ_[i];
+
+    vectorized_dR();
+    vectorized_com_dJ();
+    vectorized_GravityForce();
+
+    /// nonlinear term
+    Nonlinearities.setZero(dof);
+
+    for (int i = 0; i < massSet.size(); ++i) {
+      Nonlinearities += comJ_[i].topRows(3).transpose() * massSet(i) * com_dJ_[i].topRows(3) * gv + \
+                        comJ_[i].bottomRows(3).transpose() * w_I_[i] * com_dJ_[i].bottomRows(3) * gv + \
+                        comJ_[i].bottomRows(3).transpose() * skew(comJ_[i].bottomRows(3) * gv) * (w_I_[i] * comJ_[i].bottomRows(3) * gv) + \
+                        -comJ_[i].topRows(3).transpose() * mg_[i];
+    }
+  }
+
+  void setAlgorithm (const std::string &algo) { algorithm = algo; }
+
+  void vectorized_R () {
+    R_.clear();
+    Eigen::Matrix3d rotMat;
+    int idx = 0;
+
+    for (int joint = 0; joint < jointSet.size(); ++joint) {
+      if (joint == 0) {
+        /// at the root.
+        if (floating) {
+          rotMat = QuaternionToRotMat(gc.segment(3, 4));
+          a_gc = gc.tail(gc.size() - 7);
+        } else {
+          rotMat.setIdentity();
+          a_gc = gc;
+        }
+      } else {
+        /// at the leaves.
+        if (jointSet[joint] == "revolute") {
+          if ((axisSet.row(idx) - Eigen::Matrix3d::Identity().row(0)).norm() < 1e-4) {
+            rotMat = rotMat * FixedFrameRPY(rpySet.row(joint)) * rotation_X(a_gc(idx));
+          } else if ((axisSet.row(idx) - Eigen::Matrix3d::Identity().row(1)).norm() < 1e-4) {
+            rotMat = rotMat * FixedFrameRPY(rpySet.row(joint)) * rotation_Y(a_gc(idx));
+          } else if ((axisSet.row(idx) - Eigen::Matrix3d::Identity().row(2)).norm() < 1e-4) {
+            rotMat = rotMat * FixedFrameRPY(rpySet.row(joint)) * rotation_Z(a_gc(idx));
+          } else {
+            std::cout<<"the axis of rotation is not aligned with the joint frame."<<std::endl;
+          }
+          ++idx;
+        } else if (jointSet[joint] == "prismatic") {
+          rotMat = rotMat * FixedFrameRPY(rpySet.row(joint));
+          ++idx;
+        } else if (jointSet[joint] == "fixed") {
+          rotMat = rotMat * FixedFrameRPY(rpySet.row(joint));
+        } else {
+          std::cout<<"this kind of joint is not yet defined"<<std::endl;
+        }
+      }
+      R_.push_back(rotMat);
+    }
+  }
+
+  void relativeJointPositions () {
+    relativeJointPos.setZero(jointSet.size() - 1,3);
+    int a_idx = 0;
+
+    for (int idx = 0; idx < relativeJointPos.rows(); ++idx) {
+      if (jointSet[idx] == "prismatic") {
+        relativeJointPos.row(idx) = R_[idx] * (xyzSet.row(idx+1).transpose() + a_gc(a_idx) * axisSet.row(a_idx).transpose());
+      } else {
+        relativeJointPos.row(idx) = R_[idx] * xyzSet.row(idx+1).transpose();
+      }
+      if (jointSet[idx] != "fixed") { ++a_idx; }
+    }
+  }
+
+  void relativeComPositions () {
+    relativeComPos.setZero(massSet.size(),3);
+
+    for (int idx = 0; idx < relativeComPos.rows(); ++idx) {
+      relativeComPos.row(idx) = R_[idx] * comSet.row(idx).transpose();
+    }
+  }
+
+  void framePositions () {
+    framePos.setZero(jointSet.size(),3);
+
+    Eigen::MatrixXd tmp_relativePos;
+    tmp_relativePos = relativeJointPos;
+
+    for (int idx = 0; idx < framePos.rows(); ++idx) {
+      if (floating) {
+        framePos.row(framePos.rows() - (idx + 1)) = tmp_relativePos.colwise().sum() + gc.head(3).transpose();
+      } else {
+        framePos.row(framePos.rows() - (idx + 1)) = tmp_relativePos.colwise().sum();
+      }
+      if (idx >= framePos.rows() - 1) { break; }
+      tmp_relativePos.row(tmp_relativePos.rows() - (idx+1)) = Eigen::Vector3d::Zero();
+    }
+  }
+
+  void getBodyJ (const int &target_body, const Eigen::Vector3d &pos, Eigen::MatrixXd &J) {
+    J.setZero(6,gv.size());
+    int a_idx = 0, i;
+
+    for (int joint = 0; joint <= target_body; ++joint) {
+      if (joint == 0) {
+        if (floating) {
+          J.topLeftCorner(3, 3) = Eigen::Matrix3d::Identity();
+          J.block(0, 3, 3, 3) = -skew(framePos.row(target_body) + pos.transpose() - gc.head(3).transpose());
+          J.bottomLeftCorner(3, 3) = Eigen::Matrix3d::Zero();
+          J.block(3, 3, 3, 3) = Eigen::Matrix3d::Identity();
+          i = 6;
+        } else {
+          i = 0;
+        }
+      } else {
+        if (jointSet[joint] == "revolute") {
+          J.topRows(3).col(i) = -skew(framePos.row(target_body) + pos.transpose() - framePos.row(joint)) * (R_[joint] * axisSet.row(a_idx).transpose());
+          J.bottomRows(3).col(i) = R_[joint] * axisSet.row(a_idx).transpose();
+          ++a_idx; ++i;
+        } else if (jointSet[joint] == "prismatic") {
+          J.topRows(3).col(i) = R_[joint] * axisSet.row(a_idx).transpose();
+          J.bottomRows(3).col(i) = Eigen::Vector3d::Zero();
+          ++a_idx; ++i;
+        }
+      }
+
+    }
+  }
+
+  void getBodyJdot (const int &target_body, const Eigen::Vector3d &pos, Eigen::MatrixXd &dJ) {
+    Eigen::MatrixXd J;
+    getBodyJ(target_body, pos, J);
+    dJ.setZero(6,gv.size());
+    int a_idx = 0, i;
+
+    for (int joint = 0; joint <= target_body; ++joint) {
+      if (joint == 0) {
+        if (floating) {
+          dJ.topLeftCorner(3, 3) = Eigen::Matrix3d::Zero();
+          dJ.block(0, 3, 3, 3) = -skew(J.topRows(3) * gv - gv.head(3));
+          dJ.bottomLeftCorner(3, 3) = Eigen::Matrix3d::Zero();
+          dJ.block(3, 3, 3, 3) = Eigen::Matrix3d::Zero();
+          i = 6;
+        } else {
+          i = 0;
+        }
+      } else {
+        if (jointSet[joint] == "revolute") {
+          dJ.topRows(3).col(i) = -skew(J.topRows(3) * gv - frameJ_[joint].topRows(3) * gv) * (R_[joint] * axisSet.row(a_idx).transpose()) -
+              skew(framePos.row(target_body) + pos.transpose() - framePos.row(joint)) * (dR_[joint] * axisSet.row(a_idx).transpose());
+          dJ.bottomRows(3).col(i) = dR_[joint] * axisSet.row(a_idx).transpose();
+          ++a_idx; ++i;
+        } else if (jointSet[joint] == "prismatic") {
+          dJ.topRows(3).col(i) = dR_[joint] * axisSet.row(a_idx).transpose();
+          dJ.bottomRows(3).col(i) = Eigen::Vector3d::Zero();
+          ++a_idx; ++i;
         }
       }
     }
+  }
+
+  void vectorized_comJ () {
+    comJ_.clear();
+    Eigen::MatrixXd J;
+
+    for (int e = 0; e < massSet.size(); ++e) {
+      getBodyJ(e, relativeComPos.row(e), J);
+      comJ_.push_back(J);
+    }
+  }
+
+  void vectorized_com_dJ () {
+    com_dJ_.clear();
+    Eigen::MatrixXd dJ;
+
+    for (int e = 0; e < massSet.size(); ++e) {
+      getBodyJdot(e, relativeComPos.row(e), dJ);
+      com_dJ_.push_back(dJ);
+    }
+  }
+
+  void vectorized_frameJ () {
+    frameJ_.clear();
+    Eigen::MatrixXd J;
+
+    for (int i = 0; i < jointSet.size(); ++i) {
+      getBodyJ(i, Eigen::Vector3d::Zero(), J);
+      frameJ_.push_back(J);
+    }
+  }
+
+  void vectorized_dR () {
+    dR_.clear();
+
+    for (int i = 0; i < R_.size(); ++i) {
+      dR_.push_back(skew(frameJ_[i].bottomRows(3) * gv) * R_[i]);
+    }
+  }
+
+  void vectorized_GravityForce () {
+    mg_.clear();
+    Eigen::Vector3d mg;
+    for (int i = 0; i < massSet.size(); ++i) {
+      mg.setZero();
+      mg[2] = massSet(i) * gravity;
+      mg_.push_back(mg);
+    }
+  }
+
+  /// <Exercise 8> composite rigid body algorithm ///
+
+  void CompositeRigidBodyAlgorithm () {
+    MassMatrix.setZero(dof, dof);
+
+    Eigen::MatrixXd M;
+    Eigen::VectorXd b, a_j;
+    Eigen::Vector3d r_ij;
+
+    for (int joint_j = 0; joint_j < jointSet.size(); ++joint_j) {
+      for (int joint_i = 0; joint_i <= joint_j; ++joint_i) {
+        if((a_joint(joint_j) != -1) && (a_joint(joint_i) != -1)) {
+          compositeBodyDynamics_toJoint(joint_j, massSet.size() - 1, M, b);
+          r_ij = relativeJointPos.middleRows(joint_i, joint_j - joint_i).colwise().sum();
+          a_j = X(joint_j, joint_i).transpose() * S(joint_i);
+//          a_j.head(3) += skew(a_j.tail(3)) * r_ij;
+          MassMatrix.bottomRightCorner(a_dof, a_dof)(a_joint(joint_j), a_joint(joint_i)) = S(joint_j).transpose() * (M * a_j);
+
+          /// symmetric
+          if (joint_j != joint_i) {
+            MassMatrix.bottomRightCorner(a_dof, a_dof)(a_joint(joint_i), a_joint(joint_j)) =
+                MassMatrix.bottomRightCorner(a_dof, a_dof)(a_joint(joint_j), a_joint(joint_i));
+          }
+        }
+      }
+    }
+
+    if (floating) {
+      compositeBodyDynamics_toJoint(0, massSet.size()-1, M, b);
+      MassMatrix.topLeftCorner(6,6) = M;
+      for (int joint = 0; joint < jointSet.size(); ++joint) {
+        compositeBodyDynamics_toJoint(joint, massSet.size() - 1, M, b);
+        if (a_joint(joint) != -1)
+          MassMatrix.bottomLeftCorner(a_dof, 6).row(a_joint(joint)) = S(joint).transpose() * M * X(joint, 0).transpose();
+        /// symmetric
+        MassMatrix.topRightCorner(6, a_dof) = MassMatrix.bottomLeftCorner(a_dof, 6).transpose();
+      }
+    }
+
+  }
+
+  void detectActingJoint () {
+    a_joint.setZero(jointSet.size());
+    int active = 0;
+    for (int joint = 0; joint < jointSet.size(); ++joint) {
+      if (jointSet[joint] == "fixed") {
+        a_joint[joint] = -1;
+      } else {
+        a_joint[joint] = active;
+        ++active;
+      }
+    }
+  }
 
   void compositeBodyDynamics_toJoint(const int &start, const int &end, Eigen::MatrixXd &M, Eigen::VectorXd &b) {
     double m_c = 0.;
@@ -298,6 +461,83 @@ class Robot {
     b.tail(3) = skew(frameJ_[start].bottomRows(3) * gv) * M.bottomRightCorner(3,3) * (frameJ_[start].bottomRows(3) * gv);
   }
 
+  /// <Exercise 8> recursive Newton Euler ///
+
+  void runRNEforNonlinearities () {
+    Eigen::VectorXd ga_ = ga;
+    Eigen::VectorXd gf_ = gf;
+    ga.setZero(dof);
+    gf.setZero(dof);
+
+    recursiveNewtonEuler();
+    Nonlinearities = gf;
+
+    ga = ga_;
+    gf = gf_;
+  }
+
+  void recursiveNewtonEuler () {
+    Eigen::VectorXd accel(6);
+    if (floating) {
+      accel = ga.head(6);
+      accel[2] += -gravity;
+    } else {
+      accel.setZero();
+    }
+
+    /// first pass
+    std::vector<Eigen::VectorXd> acceleration;
+    acceleration.resize(jointSet.size());
+
+    for (int joint = 0; joint < jointSet.size(); ++joint) {
+      acceleration[joint] = accel;
+      if (joint == jointSet.size() - 1) { break; }
+
+      /// parent to child
+      accel.head(3) += skew(accel.tail(3)) * relativeJointPos.row(joint).transpose() +
+          skew(frameJ_[joint].bottomRows(3) * gv) * skew(frameJ_[joint].bottomRows(3) * gv) * relativeJointPos.row(joint).transpose();
+
+      /// i to i'
+      if (a_joint(joint+1) != -1) {
+        if (floating) {
+          accel += dS(joint+1) * gv(a_joint(joint+1) + 6) + S(joint+1) * ga(a_joint(joint+1) + 6);
+        } else {
+          accel += dS(joint+1) * gv(a_joint(joint+1)) + S(joint+1) * ga(a_joint(joint+1));
+        }
+      }
+    }
+
+    /// second pass
+    int gfIdx;
+    if (floating) {
+      gfIdx = a_dof + 6;
+    } else {
+      gfIdx = a_dof;
+    }
+    Eigen::VectorXd f(6);
+    f.setZero();
+
+    updateSingleBodyDynamics_toJoint();
+
+    for (int joint = M_j.size() - 1; joint >= 0; --joint) {
+      if (joint == M_j.size() - 1) {
+        f = M_j[joint] * acceleration[joint] + b_j[joint];
+      } else {
+        f = M_j[joint] * acceleration[joint] + b_j[joint] + X(joint+1, joint) * f;
+      }
+      --gfIdx;
+      if (joint == 0 && floating) {
+        gf.head(6) = f;
+        break;
+      }
+      gf(gfIdx) = S(joint).transpose() * f;
+    }
+  }
+
+  void setGeneralizedAcceleration (const Eigen::VectorXd &ga_) {
+    ga = ga_;
+  }
+
   /// <Exercise 9> articulated body algorithm ///
 
   void ABA (Eigen::VectorXd & ga_, const Eigen::VectorXd& gc_, const Eigen::VectorXd& gv_, const Eigen::VectorXd& gf_) {
@@ -317,17 +557,23 @@ class Robot {
     gf = gf_;
   }
 
-  Eigen::VectorXd S (const int & idx) {
+
+  Eigen::VectorXd S (const int & joint) {
     Eigen::VectorXd s;
     s.setZero(6);
-    if (idx < 7 && idx > 0)
-      s.tail(3) = R_[idx].col(2);
+    if (jointSet[joint] == "revolute")
+      s.tail(3) = R_[joint] * axisSet.row(a_joint(joint)).transpose();
+    else
+      std::cout<<"this kind of joint is not yet provided"<<std::endl;
     return s;
   }
 
-  Eigen::VectorXd dS (const int & idx) {
-    Eigen::VectorXd ds = S(idx);
-    ds.tail(3) = skew(comJ_[idx].bottomRows(3) * gv) * ds.tail(3);
+  Eigen::VectorXd dS (const int & joint) {
+    Eigen::VectorXd ds = S(joint);
+    if (jointSet[joint] == "revolute")
+      ds.tail(3) = skew(frameJ_[joint].bottomRows(3) * gv) * ds.tail(3);
+    else
+      std::cout<<"this kind of joint is not yet provided"<<std::endl;
     return ds;
   }
 
@@ -349,28 +595,52 @@ class Robot {
     M_j.clear();
     b_j.clear();
 
-    Eigen::MatrixXd M, X_com(6, 6);
+    Eigen::MatrixXd M;
     Eigen::VectorXd b;
+    int start, end;
+    bool compositeChain = false;
 
-    for (int i = 0; i <= 6; ++i) {
+    for (int joint = 0; joint < jointSet.size(); ++joint) {
+
       M.setZero(6,6);
       b.setZero(6);
 
-      if (i == 6) {
-        /// fixed joint
-        compositeBodyDynamics_toJoint(6, 7, M, b);
-
+      /// fixed joints
+      if (joint < jointSet.size() - 1) {
+        if (a_joint(joint + 1) == -1) {
+          if (!compositeChain) { start = joint; }
+          compositeChain = true;
+          continue;
+        } else {
+          if (compositeChain) {
+            end = joint;
+            compositeBodyDynamics_toJoint(start, end, M, b);
+            compositeChain = false;
+            M_j.push_back(M);
+            b_j.push_back(b);
+            continue;
+          }
+        }
       } else {
-        /// movable joints
-        M.topLeftCorner(3,3) = massSet(i) * Eigen::Matrix3d::Identity();
-        M.topRightCorner(3,3) = -massSet(i) * skew(relativeComPos.row(i));
-        M.bottomLeftCorner(3,3) = massSet(i) * skew(relativeComPos.row(i));
-        M.bottomRightCorner(3,3) = w_I_[i] - massSet(i) * skew(relativeComPos.row(i)) * skew(relativeComPos.row(i));
-
-        b.head(3) = massSet(i) * skew(comJ_[i].bottomRows(3) * gv) * skew(comJ_[i].bottomRows(3) * gv) * (relativeComPos.row(i).transpose());
-        b.tail(3) = skew(comJ_[i].bottomRows(3) * gv) * (w_I_[i] - massSet(i) * skew(relativeComPos.row(i)) * skew(relativeComPos.row(i))) * \
-                  (comJ_[i].bottomRows(3) * gv);
+        if (compositeChain) {
+          end = joint;
+          compositeBodyDynamics_toJoint(start, end, M, b);
+          compositeChain = false;
+          M_j.push_back(M);
+          b_j.push_back(b);
+          break;
+        }
       }
+
+      /// movable joints
+      assert(!compositeChain);
+      M.topLeftCorner(3,3) = massSet(joint) * Eigen::Matrix3d::Identity();
+      M.topRightCorner(3,3) = -massSet(joint) * skew(relativeComPos.row(joint));
+      M.bottomLeftCorner(3,3) = massSet(joint) * skew(relativeComPos.row(joint));
+      M.bottomRightCorner(3,3) = w_I_[joint] - massSet(joint) * skew(relativeComPos.row(joint)) * skew(relativeComPos.row(joint));
+
+      b.head(3) = massSet(joint) * skew(comJ_[joint].bottomRows(3) * gv) * skew(comJ_[joint].bottomRows(3) * gv) * (relativeComPos.row(joint).transpose());
+      b.tail(3) = skew(comJ_[joint].bottomRows(3) * gv) * M.bottomRightCorner(3,3) * (comJ_[joint].bottomRows(3) * gv);
 
       M_j.push_back(M);
       b_j.push_back(b);
@@ -405,7 +675,7 @@ class Robot {
   void ForwardDynamics_ABA () {
     Eigen::VectorXd a_p;
     a_p.setZero(6);
-    a_p[2] = 9.81;
+    a_p[2] = -gravity;
 
     for (int i = 0; i < ga.size(); ++i) {
       ga(i) = (1 / (S(i + 1).transpose() * ArtMassMat[i + 1] * S(i + 1))) * (-S(i + 1).transpose() * \
@@ -426,8 +696,13 @@ class Robot {
 
  protected:
 
-  Eigen::VectorXd gc, gv, massSet, Nonlinearities;
-  Eigen::MatrixXd rpySet, xyzSet, comSet, MassMatrix, relativeJointPos, relativeComPos, framePos;
+  int dof=0, a_dof=0;
+  double gravity=0;
+  bool floating=false;
+  std::string algorithm = "PNE";
+  Eigen::VectorXd gc, gv, massSet, Nonlinearities, a_gc, a_joint;
+  Eigen::MatrixXd rpySet, xyzSet, comSet, axisSet, MassMatrix, relativeJointPos, relativeComPos, framePos;
+  std::vector<std::string> jointSet;
   std::vector<Eigen::Vector3d> mg_;
   std::vector<Eigen::Matrix3d> R_, dR_, b_I_, w_I_;
   std::vector<Eigen::MatrixXd> M_, comJ_, frameJ_, com_dJ_;
@@ -444,60 +719,77 @@ class ANYMAL_ONELEG : public Robot {
  public:
 
   ANYMAL_ONELEG () {
-    rpySet.setZero(7,3);
-    xyzSet.setZero(7,3);
-    comSet.setZero(8,3);
-    massSet.setZero(8);
+    a_dof = 3;
+    dof = 6 + a_dof;
+    floating = true;
+
+    gravity = -9.81;
+
+    xyzSet.setZero(6,3);
+    rpySet.setZero(6,3);
+    axisSet.setZero(3,3);
+    jointSet.resize(6);
+
+    comSet.setZero(6,3);
+    massSet.setZero(6);
     b_I_.clear();
 
-    kinovaConfig();
+    anymalOneLegConfig();
+    detectActingJoint();
 
-    gc.setZero(6);
-    gv.setZero(6);
-    ga.setZero(6);
-    gf.setZero(6);
+    gc.setZero(dof + 1);
+    gv.setZero(dof);
+    ga.setZero(dof);
+    gf.setZero(dof);
   }
 
-  void kinovaConfig () {
+  void anymalOneLegConfig () {
+    /// joint configuration
+    xyzSet << 0, 0, 0,
+        0.277, 0.116, 0.0,
+        0.0635, 0.041, 0.0,
+        0.0, 0.109, -0.25,
+        0.1, -0.02, 0.0,
+        0.0, 0.0, -0.32125;
 
-    xyzSet << 0.0, 0.0, 0.15675,
-        0.0, 0.0016, -0.11875,
-        0.0, -0.410, 0.0,
-        0.0, 0.2073, -0.0114,
-        0.0, 0.0, -0.10375,
-        0.0, 0.10375, 0.0,
-        0.0, 0.0, -0.1600;
-
-    rpySet << 0.0, 3.14159265359, 0.0,
-        -1.57079632679, 0.0, 3.14159265359,
-        0.0, 3.14159265359, 0.0,
-        -1.57079632679, 0.0, 3.14159265359,
-        1.57079632679, 0.0, 3.14159265359,
-        -1.57079632679, 0.0, 3.14159265359,
-        3.14159265359, 0.0, 0.0;
-
-    comSet << 0, 0, 0.1255,
-        0, -0.002, -0.0605,
-        0, -0.2065, -0.01,
-        0, 0.081, -0.0086,
-        0, 0.0028848942, -0.0541932613,
-        0, 0.0497208855, -0.0028562765,
-        0, 0, -0.06,
+    rpySet << 0, 0, 0,
+        0, 0, 0,
+        0, 0, 0,
+        0, 0, 0,
+        0, 0, 0,
         0, 0, 0;
 
-    massSet << 0.46784, 0.7477, 0.99, 0.6763, 0.463, 0.463, 1.327, 0.01;
+    axisSet << 1, 0, 0,
+        0, 1, 0,
+        0, 1, 0;
 
-    Eigen::MatrixXd inertiaConfig; inertiaConfig.setZero(8,6);
-    inertiaConfig << 0.000951270861568, 0, 0, 0.000951270861568, 0, 0.000374272,
-        0.00152031725204, 0, 0, 0.00152031725204, 0, 0.00059816,
-        0.010502207991, 0, 0, 0.000792, 0, 0.010502207991,
-        0.00142022431908, 0, 0, 0.000304335, 0, 0.00142022431908,
-        0.0004321316048, 0, 0, 0.0004321316048, 0, 9.26e-05,
-        0.0004321316048, 0, 0, 9.26e-05, 0, 0.0004321316048,
-        0.0004403232387, 0, 0, 0.0004403232387, 0, 0.0007416,
-        0.01, 0, 0, 0.01, 0, 0.01;
+    jointSet[0] = "fixed";
+    jointSet[1] = "revolute";
+    jointSet[2] = "revolute";
+    jointSet[3] = "revolute";
+    jointSet[4] = "fixed";
+    jointSet[5] = "fixed";
 
-    for (int idx = 0; idx < 8; ++idx) {
+    /// link configuration
+    comSet << -0.001960558279, -0.001413217745, 0.050207125344,
+        0.064516258147, -0.003787101702, -0.000152184388,
+        -0.003897968082, 0.054226618537, -0.214583373795,
+        0.030816858139, -0.004617229294, 0.000893125713,
+        -8.66e-10, -1.472e-09, -0.244345749188,
+        0., 0., 0.;
+
+    massSet << 16.793507758, 1.42462064, 1.634976467, 0.207204302, 0.140170767, 0.;
+
+    Eigen::MatrixXd inertiaConfig; inertiaConfig.setZero(massSet.size(),6);
+    inertiaConfig <<
+        0.217391101503, -0.00132873239126, -0.00228200226173, 0.639432546734, -0.00138078263145, 0.62414077654,
+        0.00243023349564, -1.53023971e-05, -2.1819095354e-05, 0.00230257239103, 2.6473021273e-05, 0.0019806759227,
+        0.0120367944369, 6.762065206e-05, 0.000287806340448, 0.0120643637939, -0.00140610131218, 0.00249422574881,
+        0.0002104880248, -5.6750980345e-05, 1.0127699391e-05, 0.000676270210023, -8.22869024e-07, 0.000545032674924,
+        0.00159938741862, -9.32e-13, 1.039e-11, 0.00159938741932, 1.7563e-11, 5.4423177329e-05,
+        0., 0., 0., 0., 0., 0.;
+
+    for (int idx = 0; idx < inertiaConfig.rows(); ++idx) {
       b_I_.push_back(inertiaMat(inertiaConfig.row(idx)));
     }
   }
@@ -505,20 +797,26 @@ class ANYMAL_ONELEG : public Robot {
 };
 
 /// do not change the name of the method
-inline Eigen::MatrixXd getMassMatrixUsingCRBA (const Eigen::VectorXd& gc) {
+inline Eigen::MatrixXd getMassMatrixUsingCRBA (const Eigen::VectorXd& gc, const raisim::ArticulatedSystem * robot) {
 
   /// !!!!!!!!!! NO RAISIM FUNCTIONS HERE !!!!!!!!!!!!!!!!!
+  ANYMAL_ONELEG anymal_oneleg;
 
+  anymal_oneleg.setAlgorithm("CRBA+RNE");
+  anymal_oneleg.update(gc, Eigen::VectorXd::Zero(9));
 
-    return Eigen::MatrixXd::Ones(9,9);
+  return anymal_oneleg.getMassMatrix();
 }
 
 /// do not change the name of the method
-inline Eigen::VectorXd getNonlinearitiesUsingRNE (const Eigen::VectorXd& gc, const Eigen::VectorXd& gv) {
+inline Eigen::VectorXd getNonlinearitiesUsingRNE (const Eigen::VectorXd& gc, const Eigen::VectorXd& gv, const raisim::ArticulatedSystem * robot) {
 
   /// !!!!!!!!!! NO RAISIM FUNCTIONS HERE !!!!!!!!!!!!!!!!!
+  ANYMAL_ONELEG anymal_oneleg;
 
+  anymal_oneleg.setAlgorithm("CRBA+RNE");
+  anymal_oneleg.update(gc, gv);
 
-  return Eigen::VectorXd::Ones(9);
+  return anymal_oneleg.getNonlinearities();
 }
 
