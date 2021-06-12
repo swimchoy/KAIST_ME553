@@ -555,7 +555,6 @@ class Robot {
     gf = gf_;
   }
 
-
   Eigen::VectorXd S (const int & joint) {
     Eigen::VectorXd s;
     s.setZero(6);
@@ -563,6 +562,8 @@ class Robot {
       s.tail(3) = R_[joint] * axisSet.row(a_joint(joint)).transpose();
     else if (jointSet[joint] == "prismatic")
       s.head(3) = R_[joint] * axisSet.row(a_joint(joint)).transpose();
+    else if (jointSet[joint] == "fixed")
+      s = 1e-15 * Eigen::VectorXd::Ones(6);
     else
       std::cout<<"this kind of joint is not yet provided"<<std::endl;
     return s;
@@ -574,6 +575,8 @@ class Robot {
       ds.tail(3) = skew(frameJ_[joint].bottomRows(3) * gv) * ds.tail(3);
     else if (jointSet[joint] == "prismatic")
       ds.head(3) = skew(frameJ_[joint].bottomRows(3) * gv) * ds.head(3);
+    else if (jointSet[joint] == "fixed")
+      ds = 1e-15 * Eigen::VectorXd::Ones(6);
     else
       std::cout<<"this kind of joint is not yet provided"<<std::endl;
     return ds;
@@ -582,11 +585,7 @@ class Robot {
   Eigen::MatrixXd X (const int & B, const int & P) {
     Eigen::MatrixXd x(6,6);
     x.setIdentity();
-//    if (jointSet[B] == "prismatic") {
-//      x.bottomLeftCorner(3,3) = skew(framePos.row(B) - a_gc(a_joint(B)) * (R_[B] * axisSet.row(a_joint(B)).transpose()).transpose() - framePos.row(P));
-//    } else {
-      x.bottomLeftCorner(3, 3) = skew(framePos.row(B) - framePos.row(P));
-//    }
+    x.bottomLeftCorner(3, 3) = skew(framePos.row(B) - framePos.row(P));
     return x;
   }
 
@@ -654,40 +653,72 @@ class Robot {
   }
 
   void updateArticulatedDynamics () {
-    ArtMassMat.resize(7);
-    ArtBiasedForce.resize(7);
+    ArtMassMat.resize(M_j.size());
+    ArtBiasedForce.resize(b_j.size());
 
     Eigen::MatrixXd ArtM(6,6);
     Eigen::VectorXd ArtB(6);
+    int j, B;
 
-    for (int i = 6; i >= 0 ; --i) {
+    for (int i = jointSet.size()-1; i >= 0 ; --i) {
+      if (jointSet[i] == "fixed" && i != 0) { continue; }
 
-      if (i == 6) {
-        ArtM = M_j[i];
-        ArtB = b_j[i];
+      /// Assume first joint is "fixed"
+      j = a_joint(i) + 1;
+      if (floating)
+        B = a_joint(i+1) + 6;
+      else
+        B = a_joint(i+1);
+
+      if (j == M_j.size() - 1) {
+        ArtM = M_j[j];
+        ArtB = b_j[j];
       } else {
-        ArtM = M_j[i] + X(i+1, i) * ArtMassMat[i+1] * X(i+1, i).transpose() + X(i+1, i) * ArtMassMat[i+1] * S(i+1) * \
-               (S(i+1).transpose() * ArtMassMat[i+1] * S(i+1)).inverse() * (-S(i+1).transpose() * ArtMassMat[i+1] * X(i+1, i).transpose());
-        ArtB = b_j[i] + X(i+1, i) * (ArtMassMat[i+1] * (S(i+1) * (S(i+1).transpose() * ArtMassMat[i+1] * S(i+1)).inverse() * \
-               (-S(i+1).transpose() * (ArtMassMat[i+1] * (dS(i+1) * gv(i) + dX(i+1, i).transpose() * (frameJ_[i] * gv)) + ArtB) + gf(i)) + \
-               dS(i+1) * gv(i) + dX(i+1, i).transpose() * (frameJ_[i] * gv)) + ArtB);
+        ArtM = M_j[j] + X(i + 1, i) * ArtMassMat[j + 1] * X(i + 1, i).transpose() + X(i + 1, i) * ArtMassMat[j + 1] * S(i + 1) * \
+             (S(i + 1).transpose() * ArtMassMat[j + 1] * S(i + 1)).inverse() * (-S(i + 1).transpose() * ArtMassMat[j + 1] * X(i + 1, i).transpose());
+        ArtB = b_j[j] + X(i + 1, i) * (ArtMassMat[j + 1] * (S(i + 1) * (S(i + 1).transpose() * ArtMassMat[j + 1] * S(i + 1)).inverse() * \
+             (-S(i + 1).transpose() * (ArtMassMat[j + 1] * (dS(i + 1) * gv(B) + dX(i + 1, i).transpose() * (frameJ_[i] * gv)) + ArtBiasedForce[j + 1]) + \
+             gf(B)) + dS(i + 1) * gv(B) + dX(i + 1, i).transpose() * (frameJ_[i] * gv)) + ArtB);
       }
 
-      ArtMassMat[i] = ArtM;
-      ArtBiasedForce[i] = ArtB;
+      ArtMassMat[j] = ArtM;
+      ArtBiasedForce[j] = ArtB;
     }
   }
 
   void ForwardDynamics_ABA () {
     Eigen::VectorXd a_p;
-    a_p.setZero(6);
-    a_p[2] = -gravity;
+    int j, B;
 
-    for (int i = 0; i < ga.size(); ++i) {
-      ga(i) = (1 / (S(i + 1).transpose() * ArtMassMat[i + 1] * S(i + 1))) * (-S(i + 1).transpose() * \
-            (ArtMassMat[i + 1] * (dS(i + 1) * gv(i) + dX(i + 1, i).transpose() * (frameJ_[i] * gv) + \
-            X(i + 1, i).transpose() * a_p) + ArtBiasedForce[i + 1]) + gf(i));
-      a_p = dS(i+1) * gv(i) + S(i+1) * ga(i) + dX(i+1, i).transpose() * (frameJ_[i] * gv) + X(i+1, i).transpose() * a_p;
+    /// set accel at root frame
+    if (floating) {
+      a_p = ArtMassMat[0].inverse() * (gf.head(6) - ArtBiasedForce[0]);
+    } else {
+      a_p.setZero(6);
+      a_p[2] += -gravity;
+    }
+
+    /// set a_p as ga.head(6) if it's floating
+    if (floating) {
+      a_p[2] += gravity;
+      ga.head(6) = a_p;
+      a_p[2] -= gravity;
+    }
+
+    /// to the leaves
+    for (int i = 0; i < jointSet.size(); ++i) {
+      if (i == jointSet.size()-1) { break; }
+      if (jointSet[i+1] == "fixed") { continue; }
+      j = a_joint(i) + 1;
+      if (floating)
+        B = a_joint(i+1) + 6;
+      else
+        B = a_joint(i+1);
+
+      ga(B) = (1 / (S(i+1).transpose() * ArtMassMat[j+1] * S(i+1))) * (-S(i+1).transpose() * \
+                       (ArtMassMat[j+1] * (dS(i+1) * gv(B) + dX(i+1, i).transpose() * (frameJ_[i] * gv) + \
+                       X(i+1, i).transpose() * a_p) + ArtBiasedForce[j+1]) + gf(B));
+      a_p = dS(i+1) * gv(B) + S(i+1) * ga(B) + dX(i+1, i).transpose() * (frameJ_[i] * gv) + X(i+1, i).transpose() * a_p;
     }
   }
 
@@ -823,5 +854,14 @@ inline Eigen::VectorXd getNonlinearitiesUsingRNE (const Eigen::VectorXd& gc, con
   anymal_oneleg.update(gc, gv);
 
   return anymal_oneleg.getNonlinearities();
+}
+
+inline Eigen::MatrixXd getGaUsingABA (const Eigen::VectorXd& gc, const Eigen::VectorXd& gv, const Eigen::VectorXd& gf) {
+
+  ANYMAL_ONELEG anymal_oneleg;
+  Eigen::VectorXd ga;
+  anymal_oneleg.ABA(ga, gc, gv, gf);
+
+  return ga;
 }
 

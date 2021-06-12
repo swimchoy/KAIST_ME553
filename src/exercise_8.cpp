@@ -18,9 +18,12 @@ int main(int argc, char* argv[]) {
   // anymal configuration
   Eigen::VectorXd gc(anymal->getGeneralizedCoordinateDim());
   Eigen::VectorXd gv(anymal->getDOF());
+  Eigen::VectorXd gf(anymal->getDOF());
 
   gc << 0, 0, 0.54, 1.0, 0.0, 0.0, 0.0, 0.03, 0.4, -0.8;
-  gv << 0.1, 0.2, 0.3, 0.1, 0.2, 0.3, 0.1,0.1,0.1;
+  gv << 0.1, 0.2, 0.3, 0.1, 0.2, 0.3, 0.1, 0.1, 0.1;
+  gf << 0.1, 0.2, 0.3, 0.1, 0.2, 0.3, 0.1, 0.1, 0.1;
+
   anymal->setState(gc, gv);
   world.integrate1();
 
@@ -33,6 +36,16 @@ int main(int argc, char* argv[]) {
     std::cout<<"RNE passed "<<std::endl;
   else
     std::cout<<"RNE failed"<<std::endl;
+
+  Eigen::MatrixXd Minv = anymal->getInverseMassMatrix().e();
+  Eigen::VectorXd b = anymal->getNonlinearities().e();
+  Eigen::VectorXd acc_raisim = Minv * (gf-b);
+
+  if ((getGaUsingABA(gc, gv, gf) - acc_raisim).norm() < 1e-8)
+    std::cout<<"ABA passed"<<std::endl;
+  else
+    std::cout<<"ABA failed"<<std::endl;
+  
 
   return 0;
 }
