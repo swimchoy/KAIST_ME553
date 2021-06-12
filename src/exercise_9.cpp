@@ -33,7 +33,7 @@ int main(int argc, char* argv[]) {
   else
     std::cout<<"CRBA failed"<<std::endl;
 
-  if((getNonlinearitiesUsingRNE(gc, gv) - kinova->getNonlinearities().e()).norm() < 1e-8)
+  if((getNonlinearitiesUsingRNE(gc, gv, kinova) - kinova->getNonlinearities().e()).norm() < 1e-8)
     std::cout<<"RNE passed "<<std::endl;
   else
     std::cout<<"RNE failed"<<std::endl;

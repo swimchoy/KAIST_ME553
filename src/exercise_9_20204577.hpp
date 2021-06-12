@@ -235,7 +235,7 @@ class Robot {
 
     for (int idx = 0; idx < relativeJointPos.rows(); ++idx) {
       if (jointSet[idx+1] == "prismatic") {
-        relativeJointPos.row(idx) = R_[idx] * (xyzSet.row(idx+1).transpose() + a_gc(a_idx+1) * axisSet.row(a_idx+1).transpose());
+        relativeJointPos.row(idx) = R_[idx] * xyzSet.row(idx+1).transpose() + R_[idx+1] * a_gc(a_idx+1) * axisSet.row(a_idx+1).transpose();
       } else {
         relativeJointPos.row(idx) = R_[idx] * xyzSet.row(idx+1).transpose();
       }
@@ -939,17 +939,17 @@ inline Eigen::MatrixXd getMassMatrixUsingCRBA (const Eigen::VectorXd& gc) {
   KINOVA kinova;
 
   kinova.setAlgorithm("CRBA+RNE");
-  kinova.update(gc, Eigen::VectorXd::Zero(9));
+  kinova.update(gc, Eigen::VectorXd::Zero(6));
 
   return kinova.getMassMatrix();
 }
 
 /// do not change the name of the method
-inline Eigen::VectorXd getNonlinearitiesUsingRNE (const Eigen::VectorXd& gc, const Eigen::VectorXd& gv) {
+inline Eigen::VectorXd getNonlinearitiesUsingRNE (const Eigen::VectorXd& gc, const Eigen::VectorXd& gv, raisim::ArticulatedSystem * robot) {
 
   KINOVA kinova;
 
-  kinova.setAlgorithm("CRBA+RNE");
+  kinova.setAlgorithm("PNE");
   kinova.update(gc, gv);
 
   return kinova.getNonlinearities();

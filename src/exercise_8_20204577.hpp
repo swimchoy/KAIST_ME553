@@ -235,7 +235,7 @@ class Robot {
 
     for (int idx = 0; idx < relativeJointPos.rows(); ++idx) {
       if (jointSet[idx+1] == "prismatic") {
-        relativeJointPos.row(idx) = R_[idx] * (xyzSet.row(idx+1).transpose() + a_gc(a_idx+1) * axisSet.row(a_idx+1).transpose());
+        relativeJointPos.row(idx) = R_[idx] * xyzSet.row(idx+1).transpose() + R_[idx+1] * a_gc(a_idx+1) * axisSet.row(a_idx+1).transpose();
       } else {
         relativeJointPos.row(idx) = R_[idx] * xyzSet.row(idx+1).transpose();
       }
