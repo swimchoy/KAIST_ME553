@@ -835,7 +835,7 @@ class ANYMAL_ONELEG : public Robot {
 };
 
 /// do not change the name of the method
-inline Eigen::MatrixXd getMassMatrixUsingCRBA (const Eigen::VectorXd& gc, const raisim::ArticulatedSystem * robot) {
+inline Eigen::MatrixXd getMassMatrixUsingCRBA (const Eigen::VectorXd& gc) {
 
   ANYMAL_ONELEG anymal_oneleg;
 
@@ -846,7 +846,7 @@ inline Eigen::MatrixXd getMassMatrixUsingCRBA (const Eigen::VectorXd& gc, const 
 }
 
 /// do not change the name of the method
-inline Eigen::VectorXd getNonlinearitiesUsingRNE (const Eigen::VectorXd& gc, const Eigen::VectorXd& gv, const raisim::ArticulatedSystem * robot) {
+inline Eigen::VectorXd getNonlinearitiesUsingRNE (const Eigen::VectorXd& gc, const Eigen::VectorXd& gv) {
 
   ANYMAL_ONELEG anymal_oneleg;
 

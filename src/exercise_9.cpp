@@ -14,7 +14,7 @@ int main(int argc, char* argv[]) {
   world.setGravity({0,0,-9.81}); //// use this gravity in your ABA!!!!
 
   // kinova
-  auto kinova = world.addArticulatedSystem(binaryPath.getDirectory() + "/rsc/kinova/urdf/kinova_no_fingers.urdf");
+  auto kinova = world.addArticulatedSystem(binaryPath.getDirectory() + "../rsc/kinova/urdf/kinova_no_fingers.urdf");
   kinova->setName("kinova");
   server.focusOn(kinova);
 
@@ -27,6 +27,16 @@ int main(int argc, char* argv[]) {
   kinova->setState(gc, gv);
   kinova->setGeneralizedForce(gf);
   world.integrate1();
+
+  if((getMassMatrixUsingCRBA(gc) - kinova->getMassMatrix().e()).norm() < 1e-8)
+    std::cout<<"CRBA passed"<<std::endl;
+  else
+    std::cout<<"CRBA failed"<<std::endl;
+
+  if((getNonlinearitiesUsingRNE(gc, gv) - kinova->getNonlinearities().e()).norm() < 1e-8)
+    std::cout<<"RNE passed "<<std::endl;
+  else
+    std::cout<<"RNE failed"<<std::endl;
 
   Eigen::MatrixXd Minv = kinova->getInverseMassMatrix().e();
   Eigen::VectorXd b = kinova->getNonlinearities().e();
