@@ -24,6 +24,10 @@ int main(int argc, char* argv[]) {
   gv << 0.1, 0.2, 0.3, 0.4, 0.5, 0.6;
   gf << 0.1, 0.2, 0.3, 0.4, 0.4, 0.3;
 
+//  gc << 0.0, 0.1, 0.2, 0.0, 2.0, 1.0, 0.0, 0.0, 0.0;
+//  gv << 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.5, 0.4;
+//  gf << 0.1, 0.2, 0.3, 0.4, 0.4, 0.3, 0.2, 0.3;
+
   kinova->setState(gc, gv);
   kinova->setGeneralizedForce(gf);
   world.integrate1();

@@ -388,9 +388,9 @@ class Robot {
     Eigen::Vector3d r_ij;
 
     for (int joint_j = 0; joint_j < jointSet.size(); ++joint_j) {
+      compositeBodyDynamics_toJoint(joint_j, massSet.size() - 1, M, b);
       for (int joint_i = 0; joint_i <= joint_j; ++joint_i) {
         if((a_joint(joint_j) != -1) && (a_joint(joint_i) != -1)) {
-          compositeBodyDynamics_toJoint(joint_j, massSet.size() - 1, M, b);
           r_ij = relativeJointPos.middleRows(joint_i, joint_j - joint_i).colwise().sum();
           a_j = X(joint_j, joint_i).transpose() * S(joint_i);
           MassMatrix.bottomRightCorner(a_dof, a_dof)(a_joint(joint_j), a_joint(joint_i)) = S(joint_j).transpose() * (M * a_j);
@@ -481,6 +481,7 @@ class Robot {
       accel[2] += -gravity;
     } else {
       accel.setZero();
+      accel[2] += -gravity;
     }
 
     /// first pass
@@ -585,6 +586,10 @@ class Robot {
   Eigen::MatrixXd X (const int & B, const int & P) {
     Eigen::MatrixXd x(6,6);
     x.setIdentity();
+    if (P < 0) {
+      x.bottomLeftCorner(3,3) = skew(framePos.row(B));
+      return x;
+    }
     x.bottomLeftCorner(3, 3) = skew(framePos.row(B) - framePos.row(P));
     return x;
   }

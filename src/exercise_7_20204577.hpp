@@ -272,9 +272,10 @@ class SimulationClass {
 
   void getJdot(const int &bodyIdx, const Eigen::Vector3d &pos, Eigen::MatrixXd &dJ) {
     dJ.setZero(6,6);
-    Eigen::MatrixXd J;
-    getJ(bodyIdx, pos, J);
-    dJ.block(0,3,3,3) = -skew(J.topRows(3) * ball[bodyIdx].gv);
+    Eigen::MatrixXd J_target, J_center;
+    getJ(bodyIdx, pos, J_target);
+    getJ(bodyIdx, zero3d, J_center);
+    dJ.block(0,3,3,3) = -skew(J_target.topRows(3) * ball[bodyIdx].gv - J_center.topRows(3) * ball[bodyIdx].gv);
   }
 
   void updateDynamics() {
