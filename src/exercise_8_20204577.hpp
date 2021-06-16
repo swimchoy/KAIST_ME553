@@ -192,6 +192,7 @@ class Robot {
     R_.clear();
     Eigen::Matrix3d rotMat;
     int idx = 0;
+    int axis_idx = 0;
 
     for (int joint = 0; joint < jointSet.size(); ++joint) {
       if (joint == 0) {
@@ -206,19 +207,22 @@ class Robot {
       } else {
         /// at the leaves.
         if (jointSet[joint] == "revolute") {
-          if ((axisSet.row(idx) - Eigen::Matrix3d::Identity().row(0)).norm() < 1e-4) {
+          if ((axisSet.row(axis_idx) - Eigen::Matrix3d::Identity().row(0)).norm() < 1e-4) {
             rotMat = rotMat * FixedFrameRPY(rpySet.row(joint)) * rotation_X(a_gc(idx));
-          } else if ((axisSet.row(idx) - Eigen::Matrix3d::Identity().row(1)).norm() < 1e-4) {
+          } else if ((axisSet.row(axis_idx) - Eigen::Matrix3d::Identity().row(1)).norm() < 1e-4) {
             rotMat = rotMat * FixedFrameRPY(rpySet.row(joint)) * rotation_Y(a_gc(idx));
-          } else if ((axisSet.row(idx) - Eigen::Matrix3d::Identity().row(2)).norm() < 1e-4) {
+          } else if ((axisSet.row(axis_idx) - Eigen::Matrix3d::Identity().row(2)).norm() < 1e-4) {
             rotMat = rotMat * FixedFrameRPY(rpySet.row(joint)) * rotation_Z(a_gc(idx));
           } else {
             std::cout<<"the axis of rotation is not aligned with the joint frame."<<std::endl;
           }
-          ++idx;
+          ++idx; ++axis_idx;
         } else if (jointSet[joint] == "prismatic") {
           rotMat = rotMat * FixedFrameRPY(rpySet.row(joint));
-          ++idx;
+          ++idx; ++axis_idx;
+        } else if (jointSet[joint] == "spherical") {
+          rotMat = rotMat * FixedFrameRPY(rpySet.row(joint)) * QuaternionToRotMat(a_gc.segment(idx, 4));
+          idx += 4; ++axis_idx;
         } else if (jointSet[joint] == "fixed") {
           rotMat = rotMat * FixedFrameRPY(rpySet.row(joint));
         } else {
@@ -292,6 +296,10 @@ class Robot {
           J.topRows(3).col(i) = R_[joint] * axisSet.row(a_idx).transpose();
           J.bottomRows(3).col(i) = Eigen::Vector3d::Zero();
           ++a_idx; ++i;
+        } else if (jointSet[joint] == "spherical") {
+          J.topRows(3).middleCols(i, 3) = -skew(framePos.row(target_body) + pos.transpose() - framePos.row(joint)) * R_[joint];
+          J.bottomRows(3).middleCols(i, 3) = R_[joint];
+          ++a_idx; i += 3;
         }
       }
 
@@ -325,6 +333,11 @@ class Robot {
           dJ.topRows(3).col(i) = dR_[joint] * axisSet.row(a_idx).transpose();
           dJ.bottomRows(3).col(i) = Eigen::Vector3d::Zero();
           ++a_idx; ++i;
+        } else if (jointSet[joint] == "spherical") {
+          dJ.topRows(3).middleCols(i, 3) = -skew(J.topRows(3) * gv - frameJ_[joint].topRows(3) * gv) * R_[joint] -
+              skew(framePos.row(target_body) + pos.transpose() - framePos.row(joint)) * dR_[joint];
+          dJ.bottomRows(3).middleCols(i, 3) = dR_[joint];
+          ++a_idx; i += 3;
         }
       }
     }
@@ -383,34 +396,61 @@ class Robot {
   void CompositeRigidBodyAlgorithm () {
     MassMatrix.setZero(dof, dof);
 
-    Eigen::MatrixXd M;
-    Eigen::VectorXd b, a_j;
+    Eigen::MatrixXd M, a_j;
+    Eigen::VectorXd b;
     Eigen::Vector3d r_ij;
+    int idx_i = 0, idx_j = 0;
 
     for (int joint_j = 0; joint_j < jointSet.size(); ++joint_j) {
       compositeBodyDynamics_toJoint(joint_j, massSet.size() - 1, M, b);
+      idx_i = 0;
       for (int joint_i = 0; joint_i <= joint_j; ++joint_i) {
         if((a_joint(joint_j) != -1) && (a_joint(joint_i) != -1)) {
           r_ij = relativeJointPos.middleRows(joint_i, joint_j - joint_i).colwise().sum();
           a_j = X(joint_j, joint_i).transpose() * S(joint_i);
-          MassMatrix.bottomRightCorner(a_dof, a_dof)(a_joint(joint_j), a_joint(joint_i)) = S(joint_j).transpose() * (M * a_j);
-
-          /// symmetric
-          if (joint_j != joint_i) {
-            MassMatrix.bottomRightCorner(a_dof, a_dof)(a_joint(joint_i), a_joint(joint_j)) =
-                MassMatrix.bottomRightCorner(a_dof, a_dof)(a_joint(joint_j), a_joint(joint_i));
+          if (jointSet[joint_i] == "spherical" && jointSet[joint_j] == "spherical") {
+            MassMatrix.bottomRightCorner(a_dof, a_dof).block(idx_j, idx_i, 3, 3) = S(joint_j).transpose() * (M * a_j);
+            idx_i += 3;
+          } else if (jointSet[joint_j] == "spherical") {
+            MassMatrix.bottomRightCorner(a_dof, a_dof).block(idx_j, idx_i, 3, 1) = S(joint_j).transpose() * (M * a_j);
+            ++idx_i;
+          } else if (jointSet[joint_i] == "spherical") {
+            MassMatrix.bottomRightCorner(a_dof, a_dof).block(idx_j, idx_i, 1, 3) = S(joint_j).transpose() * (M * a_j);
+            idx_i += 3;
+          } else {
+            MassMatrix.bottomRightCorner(a_dof, a_dof)(idx_j, idx_i) = (S(joint_j).transpose() * (M * a_j)).value();
+            ++idx_i;
           }
         }
+      }
+      if (jointSet[joint_j] == "spherical")
+        idx_j += 3;
+      else if (jointSet[joint_j] != "fixed")
+        ++idx_j;
+    }
+
+    /// symmetric
+    for (int j = 0; j < a_dof; ++j) {
+      for (int i = 0; i < j; ++i) {
+        MassMatrix.bottomRightCorner(a_dof, a_dof)(i, j) = MassMatrix.bottomRightCorner(a_dof, a_dof)(j, i);
       }
     }
 
     if (floating) {
       compositeBodyDynamics_toJoint(0, massSet.size()-1, M, b);
       MassMatrix.topLeftCorner(6,6) = M;
+      idx_j = 0;
       for (int joint = 0; joint < jointSet.size(); ++joint) {
         compositeBodyDynamics_toJoint(joint, massSet.size() - 1, M, b);
-        if (a_joint(joint) != -1)
-          MassMatrix.bottomLeftCorner(a_dof, 6).row(a_joint(joint)) = S(joint).transpose() * M * X(joint, 0).transpose();
+        if (a_joint(joint) != -1) {
+          if (jointSet[joint] == "spherical") {
+            MassMatrix.bottomLeftCorner(a_dof, 6).middleRows(idx_j, 3) = S(joint).transpose() * M * X(joint, 0).transpose();
+            idx_j += 3;
+          } else {
+            MassMatrix.bottomLeftCorner(a_dof, 6).row(idx_j) = S(joint).transpose() * M * X(joint, 0).transpose();
+            idx_j += 1;
+          }
+        }
         /// symmetric
         MassMatrix.topRightCorner(6, a_dof) = MassMatrix.bottomLeftCorner(a_dof, 6).transpose();
       }
@@ -485,8 +525,12 @@ class Robot {
     }
 
     /// first pass
+    int gIdx = 0;
     std::vector<Eigen::VectorXd> acceleration;
     acceleration.resize(jointSet.size());
+
+    if (floating)
+      gIdx += 6;
 
     for (int joint = 0; joint < jointSet.size(); ++joint) {
       acceleration[joint] = accel;
@@ -497,11 +541,13 @@ class Robot {
           skew(frameJ_[joint].bottomRows(3) * gv) * (frameJ_[joint+1].topRows(3) * gv - frameJ_[joint].topRows(3) * gv);
 
       /// i to i'
-      if (a_joint(joint+1) != -1) {
-        if (floating) {
-          accel += dS(joint+1) * gv(a_joint(joint+1) + 6) + S(joint+1) * ga(a_joint(joint+1) + 6);
+      if (jointSet[joint+1] != "fixed") {
+        if (jointSet[joint+1] == "spherical") {
+          accel += dS(joint+1) * gv.segment(gIdx, 3) + S(joint+1) * ga.segment(gIdx, 3);
+          gIdx += 3;
         } else {
-          accel += dS(joint+1) * gv(a_joint(joint+1)) + S(joint+1) * ga(a_joint(joint+1));
+          accel += dS(joint + 1) * gv(gIdx) + S(joint + 1) * ga(gIdx);
+          ++gIdx;
         }
       }
     }
@@ -525,11 +571,18 @@ class Robot {
         f = M_j[joint] * acceleration[joint] + b_j[joint] + X(joint+1, joint) * f;
       }
       --gfIdx;
-      if (joint == 0 && floating) {
-        gf.head(6) = f;
+      if (joint == 0) {
+        if (floating) {
+          gf.head(6) = f;
+        }
         break;
       }
-      gf(gfIdx) = S(joint).transpose() * f;
+      if (jointSet[joint] == "spherical") {
+        gfIdx -= 2;
+        gf.segment(gfIdx, 3) = S(joint).transpose() * f;
+      } else {
+        gf(gfIdx) = (S(joint).transpose() * f).value();
+      }
     }
   }
 
@@ -556,28 +609,36 @@ class Robot {
     gf = gf_;
   }
 
-  Eigen::VectorXd S (const int & joint) {
-    Eigen::VectorXd s;
-    s.setZero(6);
-    if (jointSet[joint] == "revolute")
-      s.tail(3) = R_[joint] * axisSet.row(a_joint(joint)).transpose();
-    else if (jointSet[joint] == "prismatic")
-      s.head(3) = R_[joint] * axisSet.row(a_joint(joint)).transpose();
-    else if (jointSet[joint] == "fixed")
-      s = 1e-15 * Eigen::VectorXd::Ones(6);
-    else
+  Eigen::MatrixXd S (const int & joint) {
+    Eigen::MatrixXd s;
+    if (jointSet[joint] == "revolute") {
+      s.setZero(6, 1);
+      s.bottomRows(3) = R_[joint] * axisSet.row(a_joint(joint)).transpose();
+    } else if (jointSet[joint] == "prismatic") {
+      s.setZero(6, 1);
+      s.topRows(3) = R_[joint] * axisSet.row(a_joint(joint)).transpose();
+    } else if (jointSet[joint] == "spherical") {
+      s.setZero(6, 3);
+      s.topRows(3) = Eigen::Matrix3d::Zero();
+      s.bottomRows(3) = R_[joint];
+    } else if (jointSet[joint] == "fixed") {
+      s.setZero(6, 1);
+      s = 1e-15 * Eigen::MatrixXd::Ones(6, 1);
+    } else
       std::cout<<"this kind of joint is not yet provided"<<std::endl;
     return s;
   }
 
-  Eigen::VectorXd dS (const int & joint) {
-    Eigen::VectorXd ds = S(joint);
+  Eigen::MatrixXd dS (const int & joint) {
+    Eigen::MatrixXd ds = S(joint);
     if (jointSet[joint] == "revolute")
-      ds.tail(3) = skew(frameJ_[joint].bottomRows(3) * gv) * ds.tail(3);
+      ds.bottomRows(3) = skew(frameJ_[joint].bottomRows(3) * gv) * ds.bottomRows(3);
     else if (jointSet[joint] == "prismatic")
-      ds.head(3) = skew(frameJ_[joint].bottomRows(3) * gv) * ds.head(3);
+      ds.topRows(3) = skew(frameJ_[joint].bottomRows(3) * gv) * ds.topRows(3);
+    else if (jointSet[joint] == "spherical")
+      ds.bottomRows(3) = skew(frameJ_[joint].bottomRows(3) * gv) * ds.bottomRows(3);
     else if (jointSet[joint] == "fixed")
-      ds = 1e-15 * Eigen::VectorXd::Ones(6);
+      ds = 1e-15 * Eigen::MatrixXd::Ones(6, 1);
     else
       std::cout<<"this kind of joint is not yet provided"<<std::endl;
     return ds;
@@ -586,10 +647,6 @@ class Robot {
   Eigen::MatrixXd X (const int & B, const int & P) {
     Eigen::MatrixXd x(6,6);
     x.setIdentity();
-    if (P < 0) {
-      x.bottomLeftCorner(3,3) = skew(framePos.row(B));
-      return x;
-    }
     x.bottomLeftCorner(3, 3) = skew(framePos.row(B) - framePos.row(P));
     return x;
   }
@@ -663,17 +720,21 @@ class Robot {
 
     Eigen::MatrixXd ArtM(6,6);
     Eigen::VectorXd ArtB(6);
-    int j, B;
+    int j, B, gIdx;
+
+    j = M_j.size();
+    gIdx = gv.size();
 
     for (int i = jointSet.size()-1; i >= 0 ; --i) {
       if (jointSet[i] == "fixed" && i != 0) { continue; }
 
       /// Assume first joint is "fixed"
-      j = a_joint(i) + 1;
-      if (floating)
-        B = a_joint(i+1) + 6;
-      else
-        B = a_joint(i+1);
+//      j = a_joint(i) + 1;
+//      if (floating)
+//        B = a_joint(i+1) + 6;
+//      else
+//        B = a_joint(i+1);
+      --j;
 
       if (j == M_j.size() - 1) {
         ArtM = M_j[j];
@@ -681,9 +742,21 @@ class Robot {
       } else {
         ArtM = M_j[j] + X(i + 1, i) * ArtMassMat[j + 1] * X(i + 1, i).transpose() + X(i + 1, i) * ArtMassMat[j + 1] * S(i + 1) * \
              (S(i + 1).transpose() * ArtMassMat[j + 1] * S(i + 1)).inverse() * (-S(i + 1).transpose() * ArtMassMat[j + 1] * X(i + 1, i).transpose());
-        ArtB = b_j[j] + X(i + 1, i) * (ArtMassMat[j + 1] * (S(i + 1) * (S(i + 1).transpose() * ArtMassMat[j + 1] * S(i + 1)).inverse() * \
-             (-S(i + 1).transpose() * (ArtMassMat[j + 1] * (dS(i + 1) * gv(B) + dX(i + 1, i).transpose() * (frameJ_[i] * gv)) + ArtBiasedForce[j + 1]) + \
-             gf(B)) + dS(i + 1) * gv(B) + dX(i + 1, i).transpose() * (frameJ_[i] * gv)) + ArtB);
+        if (jointSet[i + 1] == "spherical") {
+          gIdx -= 3;
+          ArtB = b_j[j] + X(i + 1, i) * (ArtMassMat[j + 1] * (S(i + 1) * (S(i + 1).transpose() * ArtMassMat[j + 1] * S(i + 1)).inverse() * \
+                 (-S(i + 1).transpose() * (ArtMassMat[j + 1] * (dS(i + 1) * gv.segment(gIdx, 3) + dX(i + 1, i).transpose() * (frameJ_[i] * gv)) + ArtBiasedForce[j + 1]) + \
+                 gf.segment(gIdx, 3)) + dS(i + 1) * gv.segment(gIdx, 3) + dX(i + 1, i).transpose() * (frameJ_[i] * gv)) + ArtBiasedForce[j + 1]);
+        } else {
+          gIdx -= 1;
+          ArtB = b_j[j] + X(i + 1, i) * (ArtMassMat[j + 1] * (S(i + 1) * (S(i + 1).transpose() * ArtMassMat[j + 1] * S(i + 1)).inverse() * \
+                 ((-S(i + 1).transpose() * (ArtMassMat[j + 1] * (dS(i + 1) * gv(gIdx) + dX(i + 1, i).transpose() * (frameJ_[i] * gv)) + ArtBiasedForce[j + 1])).value() + \
+                 gf(gIdx)) + dS(i + 1) * gv(gIdx) + dX(i + 1, i).transpose() * (frameJ_[i] * gv)) + ArtBiasedForce[j + 1]);
+        }
+
+//        ArtB = b_j[j] + X(i + 1, i) * (ArtMassMat[j + 1] * (S(i + 1) * (S(i + 1).transpose() * ArtMassMat[j + 1] * S(i + 1)).inverse() * \
+//             (-S(i + 1).transpose() * (ArtMassMat[j + 1] * (dS(i + 1) * gv(B) + dX(i + 1, i).transpose() * (frameJ_[i] * gv)) + ArtBiasedForce[j + 1]) + \
+//             gf(B)) + dS(i + 1) * gv(B) + dX(i + 1, i).transpose() * (frameJ_[i] * gv)) + ArtB);
       }
 
       ArtMassMat[j] = ArtM;
@@ -711,22 +784,40 @@ class Robot {
     }
 
     /// to the leaves
+    B = 0;
+    if (floating)
+      B = 6;
+
     for (int i = 0; i < jointSet.size(); ++i) {
       if (i == jointSet.size()-1) { break; }
       if (jointSet[i+1] == "fixed") { continue; }
       j = a_joint(i) + 1;
-      if (floating)
-        B = a_joint(i+1) + 6;
-      else
-        B = a_joint(i+1);
+//      if (floating)
+//        B = a_joint(i+1) + 6;
+//      else
+//        B = a_joint(i+1);
 
-      ga(B) = (1 / (S(i+1).transpose() * ArtMassMat[j+1] * S(i+1))) * (-S(i+1).transpose() * \
-                       (ArtMassMat[j+1] * (dS(i+1) * gv(B) + dX(i+1, i).transpose() * (frameJ_[i] * gv) + \
-                       X(i+1, i).transpose() * a_p) + ArtBiasedForce[j+1]) + gf(B));
-      a_p = dS(i+1) * gv(B) + S(i+1) * ga(B) + dX(i+1, i).transpose() * (frameJ_[i] * gv) + X(i+1, i).transpose() * a_p;
+      if (jointSet[i+1] == "spherical") {
+        ga.segment(B, 3) = (S(i+1).transpose() * ArtMassMat[j+1] * S(i+1)).inverse() * (-S(i+1).transpose() * \
+                       (ArtMassMat[j+1] * (dS(i+1) * gv.segment(B, 3) + dX(i+1, i).transpose() * (frameJ_[i] * gv) + \
+                       X(i+1, i).transpose() * a_p) + ArtBiasedForce[j+1]) + gf.segment(B,3));
+        a_p = dS(i+1) * gv.segment(B, 3) + S(i+1) * ga.segment(B, 3) + dX(i+1, i).transpose() * (frameJ_[i] * gv) + X(i+1, i).transpose() * a_p;
+        B += 3;
+      } else {
+        ga(B) = (S(i+1).transpose() * ArtMassMat[j+1] * S(i+1)).inverse()(0, 0) * ((-S(i+1).transpose() * \
+                 (ArtMassMat[j+1] * (dS(i+1) * gv(B) + dX(i+1, i).transpose() * (frameJ_[i] * gv) + \
+                 X(i+1, i).transpose() * a_p) + ArtBiasedForce[j+1])).value() + gf(B));
+        a_p = dS(i+1) * gv(B) + S(i+1) * ga(B) + dX(i+1, i).transpose() * (frameJ_[i] * gv) + X(i+1, i).transpose() * a_p;
+        ++B;
+      }
+//      ga(B) = (1 / (S(i+1).transpose() * ArtMassMat[j+1] * S(i+1))) * (-S(i+1).transpose() * \
+//                       (ArtMassMat[j+1] * (dS(i+1) * gv(B) + dX(i+1, i).transpose() * (frameJ_[i] * gv) + \
+//                       X(i+1, i).transpose() * a_p) + ArtBiasedForce[j+1]) + gf(B));
+//      a_p = dS(i+1) * gv(B) + S(i+1) * ga(B) + dX(i+1, i).transpose() * (frameJ_[i] * gv) + X(i+1, i).transpose() * a_p;
     }
   }
 
+  int getDof() { return dof; }
   Eigen::MatrixXd getMassMatrix () { return MassMatrix; }
   Eigen::MatrixXd getNonlinearities () { return Nonlinearities; }
   Eigen::Matrix3d getFrameOrientation (const int & e) { return R_[e]; }
@@ -762,7 +853,7 @@ class ANYMAL_ONELEG : public Robot {
  public:
 
   ANYMAL_ONELEG () {
-    a_dof = 3;
+    a_dof = 5;
     dof = 6 + a_dof;
     floating = true;
 
@@ -780,7 +871,12 @@ class ANYMAL_ONELEG : public Robot {
     anymalOneLegConfig();
     detectActingJoint();
 
-    gc.setZero(dof + 1);
+    int gcDim = a_dof;
+    if (floating)
+      gcDim += 1;
+    gcDim += std::count(jointSet.begin(), jointSet.end(), "spherical");
+
+    gc.setZero(gcDim);
     gv.setZero(dof);
     ga.setZero(dof);
     gf.setZero(dof);
@@ -809,7 +905,7 @@ class ANYMAL_ONELEG : public Robot {
     jointSet[0] = "fixed";
     jointSet[1] = "revolute";
     jointSet[2] = "revolute";
-    jointSet[3] = "revolute";
+    jointSet[3] = "spherical";
     jointSet[4] = "fixed";
     jointSet[5] = "fixed";
 
@@ -845,7 +941,7 @@ inline Eigen::MatrixXd getMassMatrixUsingCRBA (const Eigen::VectorXd& gc) {
   ANYMAL_ONELEG anymal_oneleg;
 
   anymal_oneleg.setAlgorithm("CRBA+RNE");
-  anymal_oneleg.update(gc, Eigen::VectorXd::Zero(9));
+  anymal_oneleg.update(gc, Eigen::VectorXd::Zero(anymal_oneleg.getDof()));
 
   return anymal_oneleg.getMassMatrix();
 }
