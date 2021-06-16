@@ -20,19 +20,19 @@ int main(int argc, char* argv[]) {
 
   // kinova configuration
   Eigen::VectorXd gc(kinova->getGeneralizedCoordinateDim()), gv(kinova->getDOF()), gf(kinova->getDOF());
-  gc << 0.0, 0.1, 0.2, 0.0, 2.0, 0.2;
-  gv << 0.1, 0.2, 0.3, 0.4, 0.5, 0.6;
-  gf << 0.1, 0.2, 0.3, 0.4, 0.4, 0.3;
+//  gc << 0.0, 0.1, 0.2, 0.0, 2.0, 0.2;
+//  gv << 0.1, 0.2, 0.3, 0.4, 0.5, 0.6;
+//  gf << 0.1, 0.2, 0.3, 0.4, 0.4, 0.3;
 
-//  gc << 0.0, 0.1, 0.2, 0.0, 2.0, 1.0, 0.0, 0.0, 0.0;
-//  gv << 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.5, 0.4;
-//  gf << 0.1, 0.2, 0.3, 0.4, 0.4, 0.3, 0.2, 0.3;
+  gc << 0.0, 0.1, 0.2, 0.0, 1.0, 0.0, 0.0, 0.0, 0.2;
+  gv << 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.5, 0.4;
+  gf << 0.1, 0.2, 0.3, 0.4, 0.4, 0.3, 0.2, 0.3;
 
   kinova->setState(gc, gv);
   kinova->setGeneralizedForce(gf);
   world.integrate1();
 
-  if((getMassMatrixUsingCRBA(gc) - kinova->getMassMatrix().e()).norm() < 1e-8)
+  if((getMassMatrixUsingCRBA(gc, kinova) - kinova->getMassMatrix().e()).norm() < 1e-8)
     std::cout<<"CRBA passed"<<std::endl;
   else
     std::cout<<"CRBA failed"<<std::endl;
