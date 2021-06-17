@@ -190,7 +190,7 @@
         </inertial>
     </link>
 
-    <joint name="kinova_joint_5" type="spherical">
+    <joint name="kinova_joint_5" type="revolute">
         <parent link="kinova_link_4"/>
         <child link="kinova_link_5"/>
         <axis xyz="0 0 1"/>

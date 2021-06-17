@@ -238,12 +238,12 @@ class Robot {
     int a_idx = 0;
 
     for (int idx = 0; idx < relativeJointPos.rows(); ++idx) {
-      if (jointSet[idx+1] == "prismatic") {
-        relativeJointPos.row(idx) = R_[idx] * xyzSet.row(idx+1).transpose() + R_[idx+1] * a_gc(a_idx+1) * axisSet.row(a_idx+1).transpose();
+      if (jointSet[idx+1] == "prismatic") { // TODO : a_gc(a_idx) or a_gc(a_idx + 1)
+        relativeJointPos.row(idx) = R_[idx] * xyzSet.row(idx+1).transpose() + R_[idx+1] * a_gc(a_idx) * axisSet.row(a_idx).transpose();
       } else {
         relativeJointPos.row(idx) = R_[idx] * xyzSet.row(idx+1).transpose();
       }
-      if (jointSet[idx] != "fixed") { ++a_idx; }
+      if (jointSet[idx+1] != "fixed") { ++a_idx; }
     }
   }
 
@@ -853,7 +853,7 @@ class ANYMAL_ONELEG : public Robot {
  public:
 
   ANYMAL_ONELEG () {
-    a_dof = 5;
+    a_dof = 3;
     dof = 6 + a_dof;
     floating = true;
 
@@ -904,8 +904,8 @@ class ANYMAL_ONELEG : public Robot {
 
     jointSet[0] = "fixed";
     jointSet[1] = "revolute";
-    jointSet[2] = "revolute";
-    jointSet[3] = "spherical";
+    jointSet[2] = "prismatic";
+    jointSet[3] = "revolute";
     jointSet[4] = "fixed";
     jointSet[5] = "fixed";
 
@@ -936,12 +936,22 @@ class ANYMAL_ONELEG : public Robot {
 };
 
 /// do not change the name of the method
-inline Eigen::MatrixXd getMassMatrixUsingCRBA (const Eigen::VectorXd& gc) {
+inline Eigen::MatrixXd getMassMatrixUsingCRBA (const Eigen::VectorXd& gc, raisim::ArticulatedSystem * robot) {
 
   ANYMAL_ONELEG anymal_oneleg;
 
   anymal_oneleg.setAlgorithm("CRBA+RNE");
   anymal_oneleg.update(gc, Eigen::VectorXd::Zero(anymal_oneleg.getDof()));
+
+//  std::cout<<"custom\n"<<anymal_oneleg.getFrameJacobian(3)<<std::endl;
+//  raisim::Vec<3> pos;
+//  Eigen::MatrixXd J, angJ;
+//  J.setZero(3, 11);
+//  angJ.setZero(3, 11);
+//  robot->getFramePosition("LF_KFE", pos);
+//  robot->getDenseFrameJacobian("LF_KFE", J);
+//  robot->getDenseFrameRotationalJacobian("LF_KFE", angJ);
+//  std::cout<<"raisim\n"<<J<<std::endl<<angJ<<std::endl;
 
   return anymal_oneleg.getMassMatrix();
 }

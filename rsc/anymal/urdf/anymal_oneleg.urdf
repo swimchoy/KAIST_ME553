@@ -99,7 +99,7 @@
         <child link="LF_HIP"/>
         <origin xyz="0.277 0.116 0.0"/>
         <axis xyz="1 0 0"/>
-        <limit effort="80" lower="-6.28" upper="6.28" velocity="15"/>
+        <limit effort="80" lower="0.0" upper="6.28" velocity="15"/>
         <dynamics damping="0.0" friction="0.0"/>
     </joint>
 
@@ -126,7 +126,7 @@
         </inertial>
     </link>
     <!-- Thigh joint -->
-    <joint name="LF_HFE" type="revolute">
+    <joint name="LF_HFE" type="prismatic">
         <parent link="LF_HIP"/>
         <child link="LF_THIGH"/>
         <origin xyz="0.0635                    0.041                    0.0"/>
@@ -151,7 +151,7 @@
         </inertial>
     </link>
     <!-- Shank joint -->
-    <joint name="LF_KFE" type="spherical">
+    <joint name="LF_KFE" type="revolute">
         <parent link="LF_THIGH"/>
         <child link="LF_SHANK"/>
         <origin xyz="0.0 0.109 -0.25"/>

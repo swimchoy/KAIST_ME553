@@ -754,6 +754,10 @@ class Robot {
       ArtMassMat[j] = ArtM;
       ArtBiasedForce[j] = ArtB;
     }
+
+    for (int i = 0; i < ArtMassMat.size(); ++i) {
+      std::cout<<"M^a_"<<i<<"\n"<<ArtMassMat[i]<<std::endl;
+    }
   }
 
   void ForwardDynamics_ABA () {
@@ -927,8 +931,8 @@ class KINOVA : public Robot {
  public:
 
   KINOVA () {
-    a_dof = 8;
-    dof = 8;
+    a_dof = 6;
+    dof = 6;
     floating = false;
 
     gravity = -9.81;
@@ -988,7 +992,7 @@ class KINOVA : public Robot {
     jointSet[2] = "revolute";
     jointSet[3] = "revolute";
     jointSet[4] = "revolute";
-    jointSet[5] = "spherical";
+    jointSet[5] = "revolute";
     jointSet[6] = "revolute";
     jointSet[7] = "fixed";
 
